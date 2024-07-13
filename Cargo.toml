@@ -2,5 +2,13 @@
 name = "habit"
 version = "0.1.0"
 edition = "2021"
+authors = ["Yann Salmon"]
+description = "A command-line habit tracker"
+readme = "README.md"
+repository = "https://github.com/yanns1/habit"
+license = "GPL-3.0"
+keyworks = ["habit", "habit-tracker"]
+categories = ["command-line-utilities"]
+
 
 [dependencies]
