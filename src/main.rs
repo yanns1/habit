@@ -1,10 +1,11 @@
+mod cli;
+mod engine;
+mod habit;
+mod new;
+
 use crate::cli::Cli;
 use clap::Parser;
 use engine::get_engine;
-
-mod cli;
-mod engine;
-mod new;
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
