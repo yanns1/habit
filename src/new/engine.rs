@@ -1,3 +1,7 @@
+use crate::db::DbMapped;
+use crate::utils::open_db;
+use rusqlite::params;
+use rusqlite::Result;
 use std::str::FromStr;
 
 use crate::engine::Engine;
@@ -6,7 +10,8 @@ use crate::new::cli::NewCli;
 use dialoguer::MultiSelect;
 use dialoguer::{theme::ColorfulTheme, Input};
 
-pub fn get_engine(_cli: NewCli) -> Box<dyn Engine> {
+pub fn get_engine(cli: NewCli) -> Box<dyn Engine> {
+    let _ = cli;
     Box::new(NewEngine {})
 }
 
@@ -15,10 +20,27 @@ struct NewEngine {}
 impl Engine for NewEngine {
     fn run(&mut self) -> anyhow::Result<()> {
         let dialoguer_theme = ColorfulTheme::default();
+        let conn = open_db()?;
 
         // ask habit info
         let name = Input::<String>::with_theme(&dialoguer_theme)
             .with_prompt("Name (make it short!)")
+            .validate_with(|input: &String| -> Result<(), String> {
+                // Check that there is no existing habit with the same name
+                let input = input.trim();
+                match conn.query_row(
+                    "SELECT name FROM habit WHERE name = ?1",
+                    params![input],
+                    |_| Ok(()),
+                ) {
+                    Ok(_) => Err(format!("Habit '{}' already exists!", input)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(()),
+                    Err(e) => Err(format!(
+                        "Query to select habit with name '{}' failed.\n{}",
+                        input, e
+                    )),
+                }
+            })
             .interact_text()?
             .trim()
             .to_string();
@@ -57,10 +79,13 @@ impl Engine for NewEngine {
             .to_string();
 
         let habit = Habit::build(name, description, selected_days, &at).unwrap();
-        println!("{:?}", habit);
 
-        // TODO:
         // add to DB
+        habit.insert(&conn)?;
+
+        println!("Habit '{}' successfully created!", habit.name);
+        println!("Run 'habit log {}' to log progress.", habit.name);
+        println!("Run 'habit show {}' to show progress.", habit.name);
 
         Ok(())
     }

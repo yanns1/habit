@@ -1,17 +1,25 @@
 use std::{fmt, str::FromStr};
 
+use anyhow::Context;
 use lazy_static::lazy_static;
 use regex::Regex;
+use rusqlite::{params, Connection};
+
+use crate::db::DbMapped;
 
 lazy_static! {
     static ref AT_RE: Regex = Regex::new(r"(?<hour>\d\d):(?<minutes>\d\d)").unwrap();
 }
 
+// Habit
+// -----
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Habit {
     pub name: String,
     pub description: String,
-    pub frequency: Frequency,
+    pub days: Vec<Day>,
+    pub at: At,
 }
 
 impl Habit {
@@ -24,19 +32,51 @@ impl Habit {
         Ok(Habit {
             name,
             description,
-            frequency: Frequency {
-                days,
-                at: At::from_str(at)?,
-            },
+            days,
+            at: At::from_str(at)?,
         })
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Frequency {
-    pub days: Vec<Day>,
-    pub at: At,
+impl DbMapped for Habit {
+    fn create_table(conn: &Connection) -> anyhow::Result<()> {
+        conn.execute(
+            "CREATE TABLE habit (
+                name        TEXT PRIMARY KEY,
+                description TEXT NOT NULL,
+                days        TEXT NOT NULL,
+                hour        INTEGER NOT NULL,
+                minutes     INTEGER NOT NULL
+            )",
+            (),
+        )
+        .with_context(|| "Failed to create habit table.")?;
+
+        Ok(())
+    }
+
+    fn insert(&self, conn: &Connection) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT INTO habit (name, description, days, hour, minutes) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                self.name,
+                self.description,
+                self.days
+                    .iter()
+                    .map(|d| d.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" "),
+                self.at.hour,
+                self.at.minutes,
+            ],
+        ).with_context(|| "Failed to insert habit into database.")?;
+
+        Ok(())
+    }
 }
+
+// At
+// --
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct At {
@@ -107,6 +147,9 @@ impl fmt::Display for ParseAtError {
         }
     }
 }
+
+// Day
+// ---
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Day {
