@@ -1,21 +1,21 @@
 mod cli;
 mod db;
+mod edit;
 mod engine;
 mod habit;
 mod new;
-mod utils;
+mod prompt;
 
 use crate::cli::Cli;
 use clap::crate_name;
 use clap::Parser;
-use db::DbMapped;
+use db::{open_db, DbMapped};
 use directories::ProjectDirs;
 use engine::get_engine;
 use habit::Habit;
 use lazy_static::lazy_static;
 use std::fs;
 use std::path::PathBuf;
-use utils::open_db;
 
 lazy_static! {
     static ref DATA_DIR: PathBuf = ProjectDirs::from("", crate_name!(), crate_name!())
