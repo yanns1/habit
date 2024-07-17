@@ -42,11 +42,9 @@ fn main() -> anyhow::Result<()> {
     fs::create_dir_all(DATA_DIR.clone())?;
 
     // Enable use of foreign keys in sqlite
-    let conn = db::open_db()?;
-    conn.execute("PRAGMA foreign_keys = ON;", ())?;
-
     // Check if the DB is made, if not create it.
     if !DB_PATH.exists() {
+        let conn = db::open_db()?;
         // Make the tables.
         db::habit_create_table(&conn)?;
         db::log_create_table(&conn)?;
