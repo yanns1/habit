@@ -5,6 +5,7 @@ mod engine;
 mod habit;
 mod new;
 mod prompt;
+mod utils;
 
 use crate::cli::Cli;
 use clap::crate_name;

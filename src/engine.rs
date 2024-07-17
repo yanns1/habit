@@ -1,4 +1,5 @@
 use crate::cli::Cli;
+use crate::edit;
 use crate::new;
 
 pub trait Engine {
@@ -8,5 +9,6 @@ pub trait Engine {
 pub fn get_engine(cli: Cli) -> Box<dyn Engine> {
     match cli.command {
         crate::cli::Command::New(cli) => new::get_engine(cli),
+        crate::cli::Command::Edit(cli) => edit::get_engine(cli),
     }
 }

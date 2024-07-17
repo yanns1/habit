@@ -1,5 +1,6 @@
 use std::{fmt, str::FromStr};
 
+use crate::utils;
 use anyhow::Context;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -27,13 +28,13 @@ impl Habit {
         name: String,
         description: String,
         days: Vec<Day>,
-        at: &str,
+        at: At,
     ) -> Result<Habit, ParseAtError> {
         Ok(Habit {
             name,
             description,
             days,
-            at: At::from_str(at)?,
+            at,
         })
     }
 }
@@ -111,6 +112,20 @@ impl fmt::Display for BuildAtError {
     }
 }
 
+impl std::error::Error for BuildAtError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn description(&self) -> &str {
+        "description() is deprecated; use Display"
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.source()
+    }
+}
+
 impl FromStr for At {
     type Err = ParseAtError;
 
@@ -131,6 +146,17 @@ impl FromStr for At {
     }
 }
 
+impl fmt::Display for At {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}:{}",
+            utils::left_pad(&self.hour.to_string(), '0', 2),
+            utils::left_pad(&self.minutes.to_string(), '0', 2)
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseAtError {
     WrongFormat,
@@ -145,6 +171,20 @@ impl fmt::Display for ParseAtError {
             Self::HourOutOfRange => write!(f, "Hour out of range. Must be in [[0, 23]]."),
             Self::MinutesOutOfRange => write!(f, "Minutes out of range. Must be in [[0, 59]]."),
         }
+    }
+}
+
+impl std::error::Error for ParseAtError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn description(&self) -> &str {
+        "description() is deprecated; use Display"
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.source()
     }
 }
 
