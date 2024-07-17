@@ -15,6 +15,7 @@ categories = ["command-line-utilities"]
 anyhow = "1.0.86"
 chrono = "0.4.38"
 clap = { version = "4.5.9", features = ["derive", "cargo"] }
+colored = "2.1.0"
 dialoguer = "0.11.0"
 directories = "5.0.1"
 lazy_static = "1.5.0"
@@ -29,3 +30,5 @@ regex = "1.10.5"
 # libraries built around `rusqlite` should probably not enable it, which
 # is why it is not a default feature -- it could become hard to disable.
 rusqlite = { version = "0.31.0", features = ["bundled"] }
+termsize = "0.1.8"
+textwrap = { version = "0.16.1" }

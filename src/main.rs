@@ -3,6 +3,7 @@ mod db;
 mod edit;
 mod engine;
 mod habit;
+mod list;
 mod new;
 mod prompt;
 mod utils;

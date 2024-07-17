@@ -20,18 +20,13 @@ pub struct Habit {
 }
 
 impl Habit {
-    pub fn build(
-        name: String,
-        description: String,
-        days: Vec<Day>,
-        at: At,
-    ) -> Result<Habit, ParseAtError> {
-        Ok(Habit {
+    pub fn new(name: String, description: String, days: Vec<Day>, at: At) -> Self {
+        Self {
             name,
             description,
             days,
             at,
-        })
+        }
     }
 }
 
