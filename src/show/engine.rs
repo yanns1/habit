@@ -29,9 +29,10 @@ impl Engine for ShowEngine {
         // Show current number of logged reps
         let n_reps = db::get_n_logs_for_habit(&conn, &self.habit)?;
         println!(
-            "You accumulated {} for habit '{}'. Congratulations!",
+            "You accumulated {} for habit '{}'. {}",
             format!("{} {}", n_reps, if n_reps <= 1 { "rep" } else { "reps" }).bold(),
-            self.habit
+            self.habit,
+            if n_reps > 0 { "Congratulations!" } else { "" }
         );
 
         println!();
