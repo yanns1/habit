@@ -143,3 +143,27 @@ pub fn habit_exists(conn: &Connection, habit_name: &str) -> anyhow::Result<bool>
         )),
     }
 }
+
+pub fn log_create_table(conn: &Connection) -> anyhow::Result<()> {
+    conn.execute(
+        "CREATE TABLE log (
+            id        INTEGER PRIMARY KEY,
+            habit     TEXT NOT NULL REFERENCES habit(name) ON DELETE CASCADE,
+            created   TEXT NOT NULL
+        )",
+        (),
+    )
+    .with_context(|| "Failed to create log table.")?;
+
+    Ok(())
+}
+
+pub fn log_insert(conn: &Connection, habit: &str) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO log (habit, created) VALUES (?1, ?2);",
+        rusqlite::params![habit, chrono::Local::now().to_rfc3339()],
+    )
+    .with_context(|| "Failed to insert log into database.")?;
+
+    Ok(())
+}

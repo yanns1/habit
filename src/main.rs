@@ -5,6 +5,7 @@ mod edit;
 mod engine;
 mod habit;
 mod list;
+mod log;
 mod new;
 mod prompt;
 mod utils;
@@ -39,12 +40,15 @@ fn main() -> anyhow::Result<()> {
     // Make directories
     fs::create_dir_all(DATA_DIR.clone())?;
 
+    // Enable use of foreign keys in sqlite
+    let conn = db::open_db()?;
+    conn.execute("PRAGMA foreign_keys = ON;", ())?;
+
     // Check if the DB is made, if not create it.
     if !DB_PATH.exists() {
-        let conn = db::open_db()?;
         // Make the tables.
         db::habit_create_table(&conn)?;
-        // TODO: Make the log table
+        db::log_create_table(&conn)?;
     }
 
     let mut engine = get_engine(cli);
