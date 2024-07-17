@@ -19,24 +19,11 @@ struct EditEngine {
 
 impl Engine for EditEngine {
     fn run(&mut self) -> anyhow::Result<()> {
-        // check if habit exists, if not error
         let conn = db::open_db()?;
-        match conn.query_row(
-            "SELECT name FROM habit WHERE name = ?1",
-            rusqlite::params![self.habit],
-            |_| Ok(()),
-        ) {
-            Ok(_) => (),
-            Err(rusqlite::Error::QueryReturnedNoRows) => {
-                return Err(anyhow!("Habit '{}' does not exists!", self.habit));
-            }
-            Err(e) => {
-                return Err(anyhow!(
-                    "Query to select habit with name '{}' failed.\n{}",
-                    self.habit,
-                    e
-                ));
-            }
+
+        // check if habit exists in db, if not error
+        if !db::habit_exists(&conn, &self.habit)? {
+            return Err(anyhow!("Habit '{}' does not exists!", self.habit));
         }
 
         // show input depending on what, then update db

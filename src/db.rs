@@ -1,5 +1,6 @@
 use crate::habit::{At, Day, Habit};
 use crate::DB_PATH;
+use anyhow::anyhow;
 use anyhow::Context;
 use rusqlite::Connection;
 
@@ -125,4 +126,20 @@ pub fn habit_update_at(conn: &Connection, habit_name: &str, new_at: &At) -> anyh
     })?;
 
     Ok(())
+}
+
+pub fn habit_exists(conn: &Connection, habit_name: &str) -> anyhow::Result<bool> {
+    match conn.query_row(
+        "SELECT name FROM habit WHERE name = ?1",
+        rusqlite::params![habit_name],
+        |_| Ok(()),
+    ) {
+        Ok(_) => Ok(true),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+        Err(e) => Err(anyhow!(
+            "Query to select habit with name '{}' failed.\n{}",
+            habit_name,
+            e
+        )),
+    }
 }
