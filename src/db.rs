@@ -167,3 +167,17 @@ pub fn log_insert(conn: &Connection, habit: &str) -> anyhow::Result<()> {
 
     Ok(())
 }
+
+pub fn get_n_logs_for_habit(conn: &Connection, habit: &str) -> anyhow::Result<usize> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM log WHERE habit = ?1",
+        rusqlite::params![habit],
+        |row| row.get::<usize, usize>(0),
+    )
+    .with_context(|| {
+        format!(
+            "Failed to count number of logged reps for habit '{}'.",
+            habit
+        )
+    })
+}

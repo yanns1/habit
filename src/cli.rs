@@ -1,4 +1,6 @@
-use crate::{delete::DeleteCli, edit::EditCli, list::ListCli, log::LogCli, new::NewCli};
+use crate::{
+    delete::DeleteCli, edit::EditCli, list::ListCli, log::LogCli, new::NewCli, show::ShowCli,
+};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
@@ -21,4 +23,5 @@ pub enum Command {
     Delete(DeleteCli),
     List(ListCli),
     Log(LogCli),
+    Show(ShowCli),
 }

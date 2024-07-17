@@ -1,7 +1,7 @@
 use crate::db;
 use crate::engine::Engine;
 use crate::log::cli::LogCli;
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use colored::Colorize;
 
 pub fn get_engine(cli: LogCli) -> Box<dyn Engine> {
@@ -25,18 +25,7 @@ impl Engine for LogEngine {
         db::log_insert(&conn, &self.habit)?;
 
         // count current number of logged reps for habit
-        let n_reps = conn
-            .query_row(
-                "SELECT COUNT(*) FROM log WHERE habit = ?1",
-                rusqlite::params![self.habit],
-                |row| row.get::<usize, usize>(0),
-            )
-            .with_context(|| {
-                format!(
-                    "Failed to count number of logged reps for habit '{}'.",
-                    self.habit
-                )
-            })?;
+        let n_reps = db::get_n_logs_for_habit(&conn, &self.habit)?;
 
         println!("Rep successfully logged.");
         println!(

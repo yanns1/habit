@@ -8,6 +8,7 @@ mod list;
 mod log;
 mod new;
 mod prompt;
+mod show;
 mod utils;
 
 use crate::cli::Cli;
