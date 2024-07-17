@@ -10,10 +10,8 @@ mod utils;
 use crate::cli::Cli;
 use clap::crate_name;
 use clap::Parser;
-use db::{open_db, DbMapped};
 use directories::ProjectDirs;
 use engine::get_engine;
-use habit::Habit;
 use lazy_static::lazy_static;
 use std::fs;
 use std::path::PathBuf;
@@ -41,9 +39,9 @@ fn main() -> anyhow::Result<()> {
 
     // Check if the DB is made, if not create it.
     if !DB_PATH.exists() {
-        let conn = open_db()?;
+        let conn = db::open_db()?;
         // Make the tables.
-        Habit::create_table(&conn)?;
+        db::habit_create_table(&conn)?;
         // TODO: Make the log table
     }
 

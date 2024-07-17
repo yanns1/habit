@@ -1,4 +1,4 @@
-use crate::habit::{At, Day};
+use crate::habit::{At, Day, Habit};
 use crate::DB_PATH;
 use anyhow::Context;
 use rusqlite::Connection;
@@ -10,6 +10,43 @@ pub fn open_db() -> anyhow::Result<Connection> {
             DB_PATH.to_string_lossy()
         )
     })
+}
+
+pub fn habit_create_table(conn: &Connection) -> anyhow::Result<()> {
+    conn.execute(
+        "CREATE TABLE habit (
+            name        TEXT PRIMARY KEY,
+            description TEXT NOT NULL,
+            days        TEXT NOT NULL,
+            hour        INTEGER NOT NULL,
+            minutes     INTEGER NOT NULL
+        )",
+        (),
+    )
+    .with_context(|| "Failed to create habit table.")?;
+
+    Ok(())
+}
+
+pub fn habit_insert(conn: &Connection, habit: &Habit) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO habit (name, description, days, hour, minutes) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            habit.name,
+            habit.description,
+            habit
+                .days
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<String>>()
+                .join(" "),
+            habit.at.hour,
+            habit.at.minutes,
+        ],
+    )
+    .with_context(|| "Failed to insert habit into database.")?;
+
+    Ok(())
 }
 
 pub fn habit_update_name(
@@ -88,9 +125,4 @@ pub fn habit_update_at(conn: &Connection, habit_name: &str, new_at: &At) -> anyh
     })?;
 
     Ok(())
-}
-
-pub trait DbMapped {
-    fn create_table(conn: &Connection) -> anyhow::Result<()>;
-    fn insert(&self, conn: &Connection) -> anyhow::Result<()>;
 }

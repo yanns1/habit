@@ -1,4 +1,4 @@
-use crate::db::{open_db, DbMapped};
+use crate::db;
 use crate::prompt;
 
 use crate::engine::Engine;
@@ -22,8 +22,8 @@ impl Engine for NewEngine {
         let habit = Habit::build(name, description, days, at).unwrap();
 
         // add to DB
-        let conn = open_db()?;
-        habit.insert(&conn)?;
+        let conn = db::open_db()?;
+        db::habit_insert(&conn, &habit)?;
 
         println!("Habit '{}' successfully created!", habit.name);
         println!("Run 'habit log {}' to log progress.", habit.name);
