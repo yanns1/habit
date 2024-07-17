@@ -29,8 +29,12 @@ impl Engine for DeleteEngine {
 
         // delete habit
         if confirmed {
+            // In sqlite, need to enable foreign keys at runtime using a pragma.
+            // See https://www.sqlite.org/foreignkeys.html.
+            // In this case, this is for the deletion to cascade to logs.
+            conn.execute("PRAGMA foreign_keys = ON;", ())?;
             conn.execute(
-                "DELETE FROM habit WHERE name = ?",
+                "DELETE FROM habit WHERE name = ?1",
                 rusqlite::params![self.habit],
             )
             .with_context(|| format!("Failed to delete habit '{}' from database.", self.habit))?;
