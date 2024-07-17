@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 #[clap(verbatim_doc_comment)]
 /// A command-line habit tracker.
 ///
-/// Create a habit, log your reps and see your progress via
+/// Create habits, log your reps and see your progress via
 /// cool terminal-based visualizations (yes, there is ASCII art!).
 pub struct Cli {
     #[command(subcommand)]
