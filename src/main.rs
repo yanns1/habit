@@ -1,5 +1,6 @@
 mod cli;
 mod db;
+mod delete;
 mod edit;
 mod engine;
 mod habit;

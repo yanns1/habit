@@ -3,6 +3,7 @@ use crate::habit::At;
 use crate::habit::Day;
 use crate::habit::ParseAtError;
 use anyhow::Context;
+use dialoguer::Confirm;
 use dialoguer::MultiSelect;
 use dialoguer::{theme::ColorfulTheme, Input};
 use lazy_static::lazy_static;
@@ -88,4 +89,14 @@ pub fn prompt_habit_at() -> anyhow::Result<At> {
             .trim(),
     )
     .with_context(|| "Not possible if validate_with worked correctly.")
+}
+
+pub fn ask_for_confirmation(prompt_mess: &str) -> anyhow::Result<bool> {
+    let dialoguer_theme: ColorfulTheme = ColorfulTheme::default();
+
+    let answer = Confirm::with_theme(&dialoguer_theme)
+        .with_prompt(prompt_mess)
+        .interact()?;
+
+    Ok(answer)
 }

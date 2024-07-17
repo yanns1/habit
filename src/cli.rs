@@ -1,4 +1,4 @@
-use crate::{edit::EditCli, list::ListCli, new::NewCli};
+use crate::{delete::DeleteCli, edit::EditCli, list::ListCli, new::NewCli};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
@@ -18,5 +18,6 @@ pub struct Cli {
 pub enum Command {
     New(NewCli),
     Edit(EditCli),
+    Delete(DeleteCli),
     List(ListCli),
 }
