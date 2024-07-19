@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::habit::{At, Day, Habit};
 use crate::DB_PATH;
 use anyhow::anyhow;
@@ -136,6 +138,40 @@ pub fn habit_exists(conn: &Connection, habit_name: &str) -> anyhow::Result<bool>
     ) {
         Ok(_) => Ok(true),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+        Err(e) => Err(anyhow!(
+            "Query to select habit with name '{}' failed.\n{}",
+            habit_name,
+            e
+        )),
+    }
+}
+
+pub fn habit_get_by_name(conn: &Connection, habit_name: &str) -> anyhow::Result<Habit> {
+    let query_res = conn.query_row(
+        "SELECT name, description, days, hour, minutes FROM habit WHERE name = ?1",
+        rusqlite::params![habit_name],
+        |row| {
+            let days: Vec<Day> = row
+                .get::<usize, String>(2)?
+                .split(' ')
+                .map(|d_str| Day::from_str(d_str).expect("Days from database should be valid."))
+                .collect();
+            let at = At::build(row.get::<usize, u8>(3)?, row.get::<usize, u8>(4)?)
+                .expect("Hour and minutes from database should be valid.");
+            Ok(Habit::new(
+                row.get::<usize, String>(0)?,
+                row.get::<usize, String>(1)?,
+                days,
+                at,
+            ))
+        },
+    );
+
+    match query_res {
+        Ok(habit) => Ok(habit),
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            Err(anyhow!("Habit '{}' does not exists!", habit_name))
+        }
         Err(e) => Err(anyhow!(
             "Query to select habit with name '{}' failed.\n{}",
             habit_name,

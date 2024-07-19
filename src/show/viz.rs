@@ -1,33 +1,11 @@
-pub trait ProgressVisualizer {
-    fn show_progress(&mut self, habit: &str) -> anyhow::Result<()>;
-}
+mod bowl_of_marbles;
+mod heatmap;
 
-pub struct HeatMap {}
+pub use bowl_of_marbles::BowlOfMarbles;
+pub use heatmap::HeatMap;
 
-impl HeatMap {
-    pub fn new() -> Self {
-        HeatMap {}
-    }
-}
-
-impl ProgressVisualizer for HeatMap {
-    fn show_progress(&mut self, habit: &str) -> anyhow::Result<()> {
-        println!("HeatMap for {}", habit);
-        todo!();
-    }
-}
-
-pub struct BowlOfMarbles {}
-
-impl BowlOfMarbles {
-    pub fn new() -> Self {
-        BowlOfMarbles {}
-    }
-}
-
-impl ProgressVisualizer for BowlOfMarbles {
-    fn show_progress(&mut self, habit: &str) -> anyhow::Result<()> {
-        println!("BowlOfMarbles for {}", habit);
-        todo!();
-    }
+#[derive(Debug)]
+pub enum ProgressVisualizer {
+    HeatMap,
+    BowlOfMarbles,
 }

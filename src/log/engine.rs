@@ -33,7 +33,6 @@ impl Engine for LogEngine {
             format!("{} {}", n_reps, if n_reps <= 1 { "rep" } else { "reps" }).bold(),
             self.habit
         );
-        // TODO: Show default visu
 
         Ok(())
     }

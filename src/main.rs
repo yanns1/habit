@@ -9,6 +9,7 @@ mod log;
 mod new;
 mod prompt;
 mod show;
+mod tui;
 mod utils;
 
 use crate::cli::Cli;
