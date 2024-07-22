@@ -180,6 +180,50 @@ pub fn habit_get_by_name(conn: &Connection, habit_name: &str) -> anyhow::Result<
     }
 }
 
+pub fn habit_get_with_most_recent_log(conn: &Connection) -> anyhow::Result<Habit> {
+    let habit_name = conn
+        .query_row(
+            "SELECT habit FROM log ORDER BY created DESC LIMIT 1;
+",
+            (),
+            |row| row.get::<usize, String>(0),
+        )
+        .with_context(|| "Failed to select the name of the habit that has the most recent log.")?;
+
+    habit_get_by_name(conn, &habit_name)
+}
+
+pub fn habit_get_all(conn: &Connection) -> anyhow::Result<Vec<Habit>> {
+    let mut stmt = conn
+        .prepare("SELECT name, description, days, hour, minutes FROM habit")
+        .with_context(|| "Failed to prepare 'select all habits' statement.")?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            let days: Vec<Day> = row
+                .get::<usize, String>(2)?
+                .split(' ')
+                .map(|d_str| Day::from_str(d_str).expect("Days from database should be valid."))
+                .collect();
+            let at = At::build(row.get::<usize, u8>(3)?, row.get::<usize, u8>(4)?)
+                .expect("Hour and minutes from database should be valid.");
+            Ok(Habit::new(
+                row.get::<usize, String>(0)?,
+                row.get::<usize, String>(1)?,
+                days,
+                at,
+            ))
+        })
+        .with_context(|| "Failed to select all habits.")?;
+
+    let mut habits = Vec::new();
+    for row in rows {
+        habits.push(row?);
+    }
+
+    Ok(habits)
+}
+
 pub fn log_create_table(conn: &Connection) -> anyhow::Result<()> {
     conn.execute(
         "CREATE TABLE log (
