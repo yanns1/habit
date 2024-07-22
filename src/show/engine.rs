@@ -31,7 +31,8 @@ use ratatui::{
 };
 use std::io;
 
-const SELECTED_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
+const SELECTED_LIST_ITEM_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
+const HOVERED_AREA_STYLE: Style = Style::new().fg(Color::LightYellow);
 
 pub fn get_engine(cli: ShowCli) -> Box<dyn Engine> {
     Box::new(ShowEngine { habit: cli.habit })
@@ -75,10 +76,11 @@ struct App {
     visualizer: ProgressVisualizer,
     habits: Vec<Habit>,
     habit_names: Vec<String>,
-    selected_habit_idx: usize,
     key_event: Option<KeyEvent>,
     mouse_event: Option<MouseEvent>,
     tabs_hovered: bool,
+    habit_list_hovered: bool,
+    habit_list_state: ListState,
     exit: bool,
 }
 
@@ -89,14 +91,18 @@ impl App {
             .map(|h| h.name.clone())
             .collect::<Vec<String>>();
 
+        let mut habit_list_state = ListState::default();
+        habit_list_state.select(Some(selected_habit_idx));
+
         Ok(App {
             visualizer: ProgressVisualizer::HeatMap,
             habits,
             habit_names,
-            selected_habit_idx,
             key_event: None,
             mouse_event: None,
             tabs_hovered: false,
+            habit_list_hovered: false,
+            habit_list_state,
             exit: false,
         })
     }
@@ -121,9 +127,7 @@ impl App {
         if event::poll(std::time::Duration::from_millis(16))? {
             match event::read()? {
                 event::Event::Key(key_event) => {
-                    if key_event.kind == KeyEventKind::Press {
-                        self.handle_key_event(key_event);
-                    }
+                    self.handle_key_event(key_event);
                 }
                 event::Event::Mouse(mouse_event) => {
                     self.handle_mouse_event(mouse_event);
@@ -142,12 +146,15 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
-        match key_event.code {
-            KeyCode::Char('q') => self.exit(),
-            KeyCode::Esc => self.exit(),
-            _ => {
-                self.key_event = Some(key_event);
+        if key_event.kind == KeyEventKind::Press {
+            match key_event.code {
+                KeyCode::Char('q') => self.exit(),
+                _ => {
+                    self.key_event = Some(key_event);
+                }
             }
+        } else {
+            self.key_event = Some(key_event);
         }
     }
 
@@ -180,10 +187,31 @@ impl Widget for &mut App {
 
         // Change app state depending on received events
         // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        // Find which area is hovered
         if let Some(mouse_event) = self.mouse_event {
             if mouse_event.kind == MouseEventKind::Moved {
                 self.tabs_hovered =
                     tabs_area.contains(Position::new(mouse_event.column, mouse_event.row));
+                self.habit_list_hovered =
+                    habit_list_area.contains(Position::new(mouse_event.column, mouse_event.row));
+            }
+        }
+
+        // Update habit list state depending on key event
+        if self.habit_list_hovered {
+            if let Some(key_event) = self.key_event {
+                if key_event.kind == KeyEventKind::Press {
+                    match key_event.code {
+                        KeyCode::Char('j') | KeyCode::Down => self.habit_list_state.select_next(),
+                        KeyCode::Char('k') | KeyCode::Up => self.habit_list_state.select_previous(),
+                        KeyCode::Char('g') | KeyCode::Home => self.habit_list_state.select_first(),
+                        KeyCode::Char('G') | KeyCode::End => self.habit_list_state.select_last(),
+                        // KeyCode::Enter => {
+                        //     self.toggle_status();
+                        // }
+                        _ => {}
+                    }
+                }
             }
         }
 
@@ -192,8 +220,9 @@ impl Widget for &mut App {
         // Tabs
         let mut tabs_block = Block::bordered().title("Visualizations");
         if self.tabs_hovered {
-            tabs_block = tabs_block.border_style(Color::LightYellow);
+            tabs_block = tabs_block.border_style(HOVERED_AREA_STYLE);
         }
+
         let tabs = Tabs::new(vec!["Heatmap", "Bowl of marbles"])
             .block(tabs_block)
             .style(Style::default().white())
@@ -201,23 +230,26 @@ impl Widget for &mut App {
             .select(0);
 
         // Habit list
-        let mut state = ListState::default();
-        state.select(Some(self.selected_habit_idx));
+        let mut habit_list_block = Block::bordered().title("Habits");
+        if self.habit_list_hovered {
+            habit_list_block = habit_list_block.border_style(HOVERED_AREA_STYLE);
+        }
+
         let items: Vec<ListItem> = self
             .habit_names
             .iter()
             .map(|habit| ListItem::from(habit.clone()))
             .collect();
         let habit_list = List::new(items)
-            .block(Block::bordered().title("List"))
-            .highlight_style(SELECTED_STYLE)
+            .block(habit_list_block)
+            .highlight_style(SELECTED_LIST_ITEM_STYLE)
             .highlight_symbol("> ")
             .highlight_spacing(HighlightSpacing::Always);
 
         // Rendering
         // ^^^^^^^^^
         tabs.render(tabs_area, buf);
-        StatefulWidget::render(habit_list, habit_list_area, buf, &mut state);
+        StatefulWidget::render(habit_list, habit_list_area, buf, &mut self.habit_list_state);
         match self.visualizer {
             ProgressVisualizer::HeatMap => HeatMap::new().render(viz_area, buf),
             ProgressVisualizer::BowlOfMarbles => BowlOfMarbles::new().render(viz_area, buf),
