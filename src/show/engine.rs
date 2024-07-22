@@ -7,10 +7,14 @@ use crate::tui;
 use anyhow::Context;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::KeyEvent;
+use ratatui::crossterm::event::MouseEvent;
+use ratatui::crossterm::event::MouseEventKind;
 use ratatui::layout::Direction;
 use ratatui::layout::Layout;
+use ratatui::layout::Position;
 use ratatui::layout::Rect;
 use ratatui::prelude::Constraint;
+use ratatui::style::Color;
 use ratatui::style::Style;
 use ratatui::widgets::Block;
 use ratatui::widgets::Paragraph;
@@ -70,6 +74,9 @@ impl Engine for ShowEngine {
 struct App {
     visualizer: ProgressVisualizer,
     habit: Habit,
+    key_event: Option<KeyEvent>,
+    mouse_event: Option<MouseEvent>,
+    tabs_hovered: bool,
     exit: bool,
 }
 
@@ -78,6 +85,9 @@ impl App {
         Ok(App {
             visualizer: ProgressVisualizer::HeatMap,
             habit,
+            key_event: None,
+            mouse_event: None,
+            tabs_hovered: false,
             exit: false,
         })
     }
@@ -91,7 +101,7 @@ impl App {
         Ok(())
     }
 
-    fn render_frame(&self, frame: &mut Frame) {
+    fn render_frame(&mut self, frame: &mut Frame) {
         frame.render_widget(self, frame.size())
     }
 
@@ -100,22 +110,40 @@ impl App {
         // remains responsive regardless of whether there are events pending
         // (16ms is ~60fps).
         if event::poll(std::time::Duration::from_millis(16))? {
-            if let event::Event::Key(key_evt) = event::read()? {
-                if key_evt.kind == KeyEventKind::Press {
-                    self.handle_key_event(key_evt);
+            match event::read()? {
+                event::Event::Key(key_event) => {
+                    if key_event.kind == KeyEventKind::Press {
+                        self.handle_key_event(key_event);
+                    }
+                }
+                event::Event::Mouse(mouse_event) => {
+                    self.handle_mouse_event(mouse_event);
+                }
+                _ => {
+                    self.key_event = None;
+                    self.mouse_event = None;
                 }
             }
+        } else {
+            self.key_event = None;
+            self.mouse_event = None;
         }
 
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key_evt: KeyEvent) {
-        match key_evt.code {
+    fn handle_key_event(&mut self, key_event: KeyEvent) {
+        match key_event.code {
             KeyCode::Char('q') => self.exit(),
             KeyCode::Esc => self.exit(),
-            _ => {}
+            _ => {
+                self.key_event = Some(key_event);
+            }
         }
+    }
+
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
+        self.mouse_event = Some(mouse_event);
     }
 
     fn exit(&mut self) {
@@ -123,7 +151,7 @@ impl App {
     }
 }
 
-impl Widget for &App {
+impl Widget for &mut App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Layout
         let layout = Layout::default()
@@ -140,9 +168,22 @@ impl Widget for &App {
         let habit_select_area = layout[0];
         let viz_area = layout[1];
 
+        // Change app state depending on received events
+        if let Some(mouse_event) = self.mouse_event {
+            if mouse_event.kind == MouseEventKind::Moved {
+                self.tabs_hovered =
+                    tabs_area.contains(Position::new(mouse_event.column, mouse_event.row));
+            }
+        }
+
         // Widgets
+        let mut tabs_block = Block::bordered().title("Visualizations");
+        if self.tabs_hovered {
+            tabs_block = tabs_block.border_style(Color::LightYellow);
+        }
+
         let tabs = Tabs::new(vec!["Heatmap", "Bowl of marbles"])
-            .block(Block::bordered().title("Visualizations"))
+            .block(tabs_block)
             .style(Style::default().white())
             .highlight_style(Style::default().blue())
             .select(0);
