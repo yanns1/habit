@@ -6,14 +6,10 @@ use crate::show::cli::ShowCli;
 use crate::tui;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::KeyEvent;
-use ratatui::crossterm::event::MouseEvent;
-use ratatui::crossterm::event::MouseEventKind;
 use ratatui::layout::Direction;
 use ratatui::layout::Layout;
-use ratatui::layout::Position;
 use ratatui::layout::Rect;
 use ratatui::prelude::Constraint;
-use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::widgets::Block;
@@ -32,7 +28,6 @@ use ratatui::{
 use std::io;
 
 const SELECTED_LIST_ITEM_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
-const HOVERED_AREA_STYLE: Style = Style::new().fg(Color::LightYellow);
 
 pub fn get_engine(cli: ShowCli) -> Box<dyn Engine> {
     Box::new(ShowEngine { habit: cli.habit })
@@ -77,9 +72,6 @@ struct App {
     habits: Vec<Habit>,
     habit_names: Vec<String>,
     key_event: Option<KeyEvent>,
-    mouse_event: Option<MouseEvent>,
-    tabs_hovered: bool,
-    habit_list_hovered: bool,
     habit_list_state: ListState,
     exit: bool,
 }
@@ -99,9 +91,6 @@ impl App {
             habits,
             habit_names,
             key_event: None,
-            mouse_event: None,
-            tabs_hovered: false,
-            habit_list_hovered: false,
             habit_list_state,
             exit: false,
         })
@@ -129,17 +118,12 @@ impl App {
                 event::Event::Key(key_event) => {
                     self.handle_key_event(key_event);
                 }
-                event::Event::Mouse(mouse_event) => {
-                    self.handle_mouse_event(mouse_event);
-                }
                 _ => {
                     self.key_event = None;
-                    self.mouse_event = None;
                 }
             }
         } else {
             self.key_event = None;
-            self.mouse_event = None;
         }
 
         Ok(())
@@ -156,10 +140,6 @@ impl App {
         } else {
             self.key_event = Some(key_event);
         }
-    }
-
-    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
-        self.mouse_event = Some(mouse_event);
     }
 
     fn exit(&mut self) {
@@ -187,30 +167,18 @@ impl Widget for &mut App {
 
         // Change app state depending on received events
         // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        // Find which area is hovered
-        if let Some(mouse_event) = self.mouse_event {
-            if mouse_event.kind == MouseEventKind::Moved {
-                self.tabs_hovered =
-                    tabs_area.contains(Position::new(mouse_event.column, mouse_event.row));
-                self.habit_list_hovered =
-                    habit_list_area.contains(Position::new(mouse_event.column, mouse_event.row));
-            }
-        }
-
         // Update habit list state depending on key event
-        if self.habit_list_hovered {
-            if let Some(key_event) = self.key_event {
-                if key_event.kind == KeyEventKind::Press {
-                    match key_event.code {
-                        KeyCode::Char('j') | KeyCode::Down => self.habit_list_state.select_next(),
-                        KeyCode::Char('k') | KeyCode::Up => self.habit_list_state.select_previous(),
-                        KeyCode::Char('g') | KeyCode::Home => self.habit_list_state.select_first(),
-                        KeyCode::Char('G') | KeyCode::End => self.habit_list_state.select_last(),
-                        // KeyCode::Enter => {
-                        //     self.toggle_status();
-                        // }
-                        _ => {}
-                    }
+        if let Some(key_event) = self.key_event {
+            if key_event.kind == KeyEventKind::Press {
+                match key_event.code {
+                    KeyCode::Char('j') | KeyCode::Down => self.habit_list_state.select_next(),
+                    KeyCode::Char('k') | KeyCode::Up => self.habit_list_state.select_previous(),
+                    KeyCode::Char('g') | KeyCode::Home => self.habit_list_state.select_first(),
+                    KeyCode::Char('G') | KeyCode::End => self.habit_list_state.select_last(),
+                    // KeyCode::Enter => {
+                    //     self.toggle_status();
+                    // }
+                    _ => {}
                 }
             }
         }
@@ -218,11 +186,7 @@ impl Widget for &mut App {
         // Widgets
         // ^^^^^^^
         // Tabs
-        let mut tabs_block = Block::bordered().title("Visualizations");
-        if self.tabs_hovered {
-            tabs_block = tabs_block.border_style(HOVERED_AREA_STYLE);
-        }
-
+        let tabs_block = Block::bordered().title("Visualizations");
         let tabs = Tabs::new(vec!["Heatmap", "Bowl of marbles"])
             .block(tabs_block)
             .style(Style::default().white())
@@ -230,11 +194,7 @@ impl Widget for &mut App {
             .select(0);
 
         // Habit list
-        let mut habit_list_block = Block::bordered().title("Habits");
-        if self.habit_list_hovered {
-            habit_list_block = habit_list_block.border_style(HOVERED_AREA_STYLE);
-        }
-
+        let habit_list_block = Block::bordered().title("Habits");
         let items: Vec<ListItem> = self
             .habit_names
             .iter()
