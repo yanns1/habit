@@ -1,19 +1,23 @@
+use crate::habit::Habit;
 use crate::show::ui::centered_rect;
 use ratatui::prelude::{Buffer, Rect};
 use ratatui::widgets::{Block, Paragraph, Widget};
 
-pub struct HeatMap {}
+pub struct HeatMap<'a> {
+    habit: &'a Habit,
+}
 
-impl HeatMap {
-    pub fn new() -> Self {
-        HeatMap {}
+impl<'a> HeatMap<'a> {
+    pub fn new(habit: &'a Habit) -> Self {
+        HeatMap { habit }
     }
 }
 
-impl Widget for HeatMap {
+impl<'a> Widget for HeatMap<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let rect = centered_rect(area, 50, 50);
-        let para = Paragraph::new("Heatmap").block(Block::bordered());
+        let para = Paragraph::new(format!("Heatmap for habit {}", self.habit.name))
+            .block(Block::bordered());
         para.render(rect, buf);
     }
 }

@@ -210,9 +210,16 @@ impl Widget for &mut App {
         // ^^^^^^^^^
         tabs.render(tabs_area, buf);
         StatefulWidget::render(habit_list, habit_list_area, buf, &mut self.habit_list_state);
+
+        let selected_habit = &self.habits[self
+            .habit_list_state
+            .selected()
+            .expect("There must always be a habit selected.")];
         match self.visualizer {
-            ProgressVisualizer::HeatMap => HeatMap::new().render(viz_area, buf),
-            ProgressVisualizer::BowlOfMarbles => BowlOfMarbles::new().render(viz_area, buf),
+            ProgressVisualizer::HeatMap => HeatMap::new(selected_habit).render(viz_area, buf),
+            ProgressVisualizer::BowlOfMarbles => {
+                BowlOfMarbles::new(selected_habit).render(viz_area, buf)
+            }
         }
 
         // // Show current number of logged reps
