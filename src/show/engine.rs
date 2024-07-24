@@ -68,11 +68,14 @@ impl Engine for ShowEngine {
 
 #[derive(Debug)]
 struct App {
+    tabs: Vec<String>,
+    visualizers: Vec<ProgressVisualizer>,
     visualizer: ProgressVisualizer,
     habits: Vec<Habit>,
     habit_names: Vec<String>,
-    key_event: Option<KeyEvent>,
     habit_list_state: ListState,
+    selected_tab_idx: usize,
+    key_event: Option<KeyEvent>,
     exit: bool,
 }
 
@@ -87,11 +90,17 @@ impl App {
         habit_list_state.select(Some(selected_habit_idx));
 
         Ok(App {
+            tabs: vec!["Heatmap".to_string(), "Bowl of marbles".to_string()],
+            visualizers: vec![
+                ProgressVisualizer::HeatMap,
+                ProgressVisualizer::BowlOfMarbles,
+            ],
             visualizer: ProgressVisualizer::HeatMap,
             habits,
             habit_names,
-            key_event: None,
             habit_list_state,
+            selected_tab_idx: 0,
+            key_event: None,
             exit: false,
         })
     }
@@ -142,6 +151,16 @@ impl App {
         }
     }
 
+    fn next_viz(&mut self) {
+        self.selected_tab_idx = (self.selected_tab_idx + 1) % self.tabs.len();
+        self.visualizer = self.visualizers[self.selected_tab_idx];
+    }
+
+    fn prev_viz(&mut self) {
+        self.selected_tab_idx = (self.tabs.len() + self.selected_tab_idx - 1) % self.tabs.len();
+        self.visualizer = self.visualizers[self.selected_tab_idx];
+    }
+
     fn exit(&mut self) {
         self.exit = true;
     }
@@ -175,6 +194,8 @@ impl Widget for &mut App {
                     KeyCode::Char('k') | KeyCode::Up => self.habit_list_state.select_previous(),
                     KeyCode::Char('g') | KeyCode::Home => self.habit_list_state.select_first(),
                     KeyCode::Char('G') | KeyCode::End => self.habit_list_state.select_last(),
+                    KeyCode::Tab => self.next_viz(),
+                    KeyCode::BackTab => self.prev_viz(),
                     // KeyCode::Enter => {
                     //     self.toggle_status();
                     // }
@@ -187,11 +208,11 @@ impl Widget for &mut App {
         // ^^^^^^^
         // Tabs
         let tabs_block = Block::bordered().title("Visualizations");
-        let tabs = Tabs::new(vec!["Heatmap", "Bowl of marbles"])
+        let tabs = Tabs::new(self.tabs.clone())
             .block(tabs_block)
             .style(Style::default().white())
             .highlight_style(Style::default().blue())
-            .select(0);
+            .select(self.selected_tab_idx);
 
         // Habit list
         let habit_list_block = Block::bordered().title("Habits");
