@@ -27,7 +27,7 @@ use ratatui::{
 };
 use std::io;
 
-const SELECTED_LIST_ITEM_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
+const POINTED_LIST_ITEM_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
 
 pub fn get_engine(cli: ShowCli) -> Box<dyn Engine> {
     Box::new(ShowEngine { habit: cli.habit })
@@ -70,11 +70,11 @@ impl Engine for ShowEngine {
 struct App {
     tabs: Vec<String>,
     visualizers: Vec<ProgressVisualizer>,
-    visualizer: ProgressVisualizer,
+    selected_tab_idx: usize,
     habits: Vec<Habit>,
     habit_names: Vec<String>,
+    selected_habit_idx: usize,
     habit_list_state: ListState,
-    selected_tab_idx: usize,
     key_event: Option<KeyEvent>,
     exit: bool,
 }
@@ -95,11 +95,11 @@ impl App {
                 ProgressVisualizer::HeatMap,
                 ProgressVisualizer::BowlOfMarbles,
             ],
-            visualizer: ProgressVisualizer::HeatMap,
+            selected_tab_idx: 0,
             habits,
             habit_names,
+            selected_habit_idx,
             habit_list_state,
-            selected_tab_idx: 0,
             key_event: None,
             exit: false,
         })
@@ -153,12 +153,10 @@ impl App {
 
     fn next_viz(&mut self) {
         self.selected_tab_idx = (self.selected_tab_idx + 1) % self.tabs.len();
-        self.visualizer = self.visualizers[self.selected_tab_idx];
     }
 
     fn prev_viz(&mut self) {
         self.selected_tab_idx = (self.tabs.len() + self.selected_tab_idx - 1) % self.tabs.len();
-        self.visualizer = self.visualizers[self.selected_tab_idx];
     }
 
     fn exit(&mut self) {
@@ -190,15 +188,26 @@ impl Widget for &mut App {
         if let Some(key_event) = self.key_event {
             if key_event.kind == KeyEventKind::Press {
                 match key_event.code {
-                    KeyCode::Char('j') | KeyCode::Down => self.habit_list_state.select_next(),
-                    KeyCode::Char('k') | KeyCode::Up => self.habit_list_state.select_previous(),
-                    KeyCode::Char('g') | KeyCode::Home => self.habit_list_state.select_first(),
-                    KeyCode::Char('G') | KeyCode::End => self.habit_list_state.select_last(),
+                    KeyCode::Char('j') | KeyCode::Down => {
+                        self.habit_list_state.select_next();
+                    }
+                    KeyCode::Char('k') | KeyCode::Up => {
+                        self.habit_list_state.select_previous();
+                    }
+                    KeyCode::Char('g') | KeyCode::Home => {
+                        self.habit_list_state.select_first();
+                    }
+                    KeyCode::Char('G') | KeyCode::End => {
+                        self.habit_list_state.select_last();
+                    }
+                    KeyCode::Enter => {
+                        self.selected_habit_idx = self
+                            .habit_list_state
+                            .selected()
+                            .expect("There should always be a habit selected.");
+                    }
                     KeyCode::Tab => self.next_viz(),
                     KeyCode::BackTab => self.prev_viz(),
-                    // KeyCode::Enter => {
-                    //     self.toggle_status();
-                    // }
                     _ => {}
                 }
             }
@@ -219,11 +228,18 @@ impl Widget for &mut App {
         let items: Vec<ListItem> = self
             .habit_names
             .iter()
-            .map(|habit| ListItem::from(habit.clone()))
+            .enumerate()
+            .map(|(i, habit)| {
+                if i == self.selected_habit_idx {
+                    ListItem::from(habit.clone()).light_blue()
+                } else {
+                    ListItem::from(habit.clone())
+                }
+            })
             .collect();
         let habit_list = List::new(items)
             .block(habit_list_block)
-            .highlight_style(SELECTED_LIST_ITEM_STYLE)
+            .highlight_style(POINTED_LIST_ITEM_STYLE)
             .highlight_symbol("> ")
             .highlight_spacing(HighlightSpacing::Always);
 
@@ -232,11 +248,10 @@ impl Widget for &mut App {
         tabs.render(tabs_area, buf);
         StatefulWidget::render(habit_list, habit_list_area, buf, &mut self.habit_list_state);
 
-        let selected_habit = &self.habits[self
-            .habit_list_state
-            .selected()
-            .expect("There must always be a habit selected.")];
-        match self.visualizer {
+        // selected_habit_idx should always be within the bounds of habits
+        let selected_habit = &self.habits[self.selected_habit_idx];
+        // selected_tab_idx should always be within the bounds of visualizers
+        match self.visualizers[self.selected_tab_idx] {
             ProgressVisualizer::HeatMap => HeatMap::new(selected_habit).render(viz_area, buf),
             ProgressVisualizer::BowlOfMarbles => {
                 BowlOfMarbles::new(selected_habit).render(viz_area, buf)
