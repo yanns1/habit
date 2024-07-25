@@ -168,19 +168,15 @@ impl Widget for &mut App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Layout
         // ^^^^^^
-        let layout = Layout::default()
+        let [tabs_area, rest] = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Fill(1)])
-            .split(area);
-        let tabs_area = layout[0];
-        let rest = layout[1];
+            .areas(area);
 
-        let layout = Layout::default()
+        let [habit_list_area, viz_area] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(10), Constraint::Fill(1)])
-            .split(rest);
-        let habit_list_area = layout[0];
-        let viz_area = layout[1];
+            .areas(rest);
 
         // Change app state depending on received events
         // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
