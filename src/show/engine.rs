@@ -10,6 +10,7 @@ use ratatui::layout::Direction;
 use ratatui::layout::Layout;
 use ratatui::layout::Rect;
 use ratatui::prelude::Constraint;
+use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::widgets::Block;
@@ -27,6 +28,7 @@ use ratatui::{
 };
 use std::io;
 
+const PRIMARY_COLOR: Color = Color::LightBlue;
 const POINTED_LIST_ITEM_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
 
 pub fn get_engine(cli: ShowCli) -> Box<dyn Engine> {
@@ -216,7 +218,7 @@ impl Widget for &mut App {
         let tabs = Tabs::new(self.tabs.clone())
             .block(tabs_block)
             .style(Style::default().white())
-            .highlight_style(Style::default().blue())
+            .highlight_style(PRIMARY_COLOR)
             .select(self.selected_tab_idx);
 
         // Habit list
@@ -227,7 +229,7 @@ impl Widget for &mut App {
             .enumerate()
             .map(|(i, habit)| {
                 if i == self.selected_habit_idx {
-                    ListItem::from(habit.clone()).light_blue()
+                    ListItem::from(habit.clone()).style(PRIMARY_COLOR)
                 } else {
                     ListItem::from(habit.clone())
                 }
