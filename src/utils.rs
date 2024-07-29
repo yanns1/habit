@@ -1,3 +1,5 @@
+use chrono::{DateTime, Datelike, TimeZone, Utc};
+
 use crate::habit::Day;
 
 pub fn left_pad(s: &str, c: char, n: usize) -> String {
@@ -30,4 +32,12 @@ pub fn display_days(days: &[Day]) -> String {
     res.push_str(&days[days.len() - 1].to_string());
 
     res
+}
+
+pub fn nth_day_of_year(datetime: &DateTime<Utc>) -> u16 {
+    let first_day_of_year = Utc
+        .with_ymd_and_hms(datetime.year(), 1, 1, 0, 0, 0)
+        .unwrap();
+
+    (datetime.signed_duration_since(first_day_of_year).num_days() + 1) as u16
 }
