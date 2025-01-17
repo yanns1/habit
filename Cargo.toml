@@ -12,15 +12,15 @@ categories = ["command-line-utilities"]
 
 
 [dependencies]
-anyhow = "1.0.86"
-chrono = "0.4.38"
-clap = { version = "4.5.10", features = ["derive", "cargo"] }
-colored = "2.1.0"
+anyhow = "1.0.95"
+chrono = "0.4.39"
+clap = { version = "4.5.26", features = ["derive", "cargo"] }
+colored = "3.0.0"
 dialoguer = "0.11.0"
-directories = "5.0.1"
+directories = "6.0.0"
 lazy_static = "1.5.0"
-ratatui = { version = "0.27.0", features = ["crossterm"] }
-regex = "1.10.5"
+ratatui = { version = "0.29.0", features = ["crossterm"] }
+regex = "1.11.1"
 # `bundled` causes us to automatically compile and link in an up to date
 # version of SQLite for you. This avoids many common build issues, and
 # avoids depending on the version of SQLite on the users system (or your
@@ -30,6 +30,6 @@ regex = "1.10.5"
 # That said, it's not ideal for all scenarios and in particular, generic
 # libraries built around `rusqlite` should probably not enable it, which
 # is why it is not a default feature -- it could become hard to disable.
-rusqlite = { version = "0.31.0", features = ["bundled"] }
-termsize = "0.1.8"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+termsize = "0.1.9"
 textwrap = { version = "0.16.1" }
