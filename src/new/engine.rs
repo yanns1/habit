@@ -1,9 +1,8 @@
 use crate::db;
-use crate::prompt;
-
 use crate::engine::Engine;
 use crate::habit::Habit;
 use crate::new::cli::NewCli;
+use crate::prompt;
 
 pub fn get_engine(cli: NewCli) -> Box<dyn Engine> {
     let _ = cli;

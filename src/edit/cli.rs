@@ -1,5 +1,4 @@
 use clap::Args;
-
 use clap::ValueEnum;
 
 #[derive(Args, Debug, Clone, PartialEq, Eq)]
