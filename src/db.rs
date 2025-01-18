@@ -1,5 +1,4 @@
-use std::str::FromStr;
-
+use crate::habit;
 use crate::habit::{At, Day, Habit};
 use crate::DB_PATH;
 use anyhow::anyhow;
@@ -15,39 +14,126 @@ pub fn open_db() -> anyhow::Result<Connection> {
     })
 }
 
-pub fn habit_create_table(conn: &Connection) -> anyhow::Result<()> {
-    conn.execute(
-        "CREATE TABLE habit (
-            name        TEXT PRIMARY KEY,
+pub fn create_tables(conn: &Connection) -> anyhow::Result<()> {
+    // Use an integer for storing days. Only seven bits are actually useful, one per day.
+    // A day's bit should be 1 if it is included, 0 otherwise.
+    // -----
+    // For `Habit`, I faced a challenge. I want the user to be able to change
+    // an habit's name, description or "at". But I also want to be able to show
+    // him his progress (see `show` module), i.e. all the logs there are for a
+    // given habit, and how they compare to what was planned. Thus, I need to
+    // keep track of a habit's *history*. This is a common problem. Articles
+    // I found exposing basic solutions are:
+    //
+    // - <https://www.codeproject.com/Articles/105768/Audit-Trail-Tracing-Data-Changes-in-Database>.
+    // - <https://dev.to/zhiyueyi/design-a-table-to-keep-historical-changes-in-database-10fn>
+    //
+    // I chose the "history table" strategy instead of the "audit table" strategy, because it is
+    // simpler. Even though audit tables (if done properly) scale better as the number of updates
+    // and database tables grow, they are trickier to query. In my case, I know there will be
+    // few updates by the user most of the time, so whatever I do, it will work just fine.
+    conn.execute_batch(
+        "
+        BEGIN;
+        CREATE TABLE Habit (
+            id          INTEGER NOT NULL UNIQUE,
+            name        TEXT NOT NULL,
             description TEXT NOT NULL,
-            days        TEXT NOT NULL,
+            days        INTEGER NOT NULL,
             hour        INTEGER NOT NULL,
-            minutes     INTEGER NOT NULL
-        )",
-        (),
+            minutes     INTEGER NOT NULL,
+            PRIMARY KEY (name)
+        );
+        CREATE TABLE HabitHistory (
+            habit_id    INTEGER NOT NULL,
+            created_at  INTEGER NOT NULL,
+            name        TEXT NOT NULL,
+            description TEXT NOT NULL,
+            days        INTEGER NOT NULL,
+            hour        INTEGER NOT NULL,
+            minutes     INTEGER NOT NULL,
+            PRIMARY KEY (habit_id, created_at),
+            FOREIGN KEY (habit_id) REFERENCES Habit(id) ON DELETE CASCADE
+        );
+        CREATE TABLE Log (
+            created_at INTEGER,
+            habit_id   INTEGER NOT NULL,
+            PRIMARY KEY (created_at),
+            FOREIGN KEY (habit_id) REFERENCES Habit(id) ON DELETE CASCADE
+        );
+        COMMIT;
+        ",
     )
-    .with_context(|| "Failed to create habit table.")?;
+    .with_context(|| "Failed to create tables.")?;
 
     Ok(())
 }
 
 pub fn habit_insert(conn: &Connection, habit: &Habit) -> anyhow::Result<()> {
+    // Query the current max id to have the new be one more.
+    // This can be slow if there are many habits. It is reasonable to
+    // assume that there will never be enough in practice to actually make
+    // this noticably slow. I thought about using the current number of rows
+    // in the table instead (using `COUNT`), but realized that it does not
+    // work, because rows can be deleted (see module `delete`).
+    //
+    // The very first row inserted is a special case. If the table is empty,
+    // MAX will fail. So first check if the table is empty. If so, set `id` to 0.
+    let is_empty = conn
+        .query_row("SELECT EXISTS (SELECT 1 FROM Habit)", [], |row| {
+            row.get::<_, u8>(0).map(|v| v == 0)
+        })
+        .with_context(|| "Query to see if there exists at least one row in Habit failed.")?;
+    let id = if is_empty {
+        0
+    } else {
+        conn.query_row("SELECT MAX(id) FROM Habit", [], |row| {
+            row.get::<_, usize>(0).map(|id| id + 1)
+        })
+        .with_context(|| "Query to select max id of Habit failed.")?
+    };
+    let byte = habit::days_to_byte(&habit.days[..]);
+
     conn.execute(
-        "INSERT INTO habit (name, description, days, hour, minutes) VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO Habit (id, name, description, days, hour, minutes) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         rusqlite::params![
+            id,
             habit.name,
             habit.description,
-            habit
-                .days
-                .iter()
-                .map(|d| d.to_string())
-                .collect::<Vec<String>>()
-                .join(" "),
+            byte,
             habit.at.hour,
             habit.at.minutes,
         ],
     )
-    .with_context(|| "Failed to insert habit into database.")?;
+    .with_context(|| format!("Failed to insert '({}, {}, {}, {}, {}, {})' into Habit.", id,
+        habit.name, habit.description, byte, habit.at.hour, habit.at.minutes))?;
+
+    Ok(())
+}
+
+pub fn habit_write_history(conn: &Connection, habit_name: &str) -> anyhow::Result<()> {
+    let (id, name, description, days, hour, minutes) = conn
+        .query_row(
+            "SELECT id, name, description, days, hour, minutes FROM Habit WHERE name = ?1",
+            rusqlite::params![habit_name],
+            |row| {
+                let id = row.get::<_, usize>(0)?;
+                let name = row.get::<_, String>(1)?;
+                let description = row.get::<_, String>(2)?;
+                let days = row.get::<_, u8>(3)?;
+                let hour = row.get::<_, u8>(4)?;
+                let minutes = row.get::<_, u8>(5)?;
+                Ok((id, name, description, days, hour, minutes))
+            },
+        )
+        .with_context(|| format!("Failed to select Habit with name '{}'.", habit_name))?;
+
+    conn.execute(
+        "INSERT INTO HabitHistory (habit_id, created_at, name, description, days, hour, minutes) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![id, chrono::Local::now().timestamp(), name, description, days, hour, minutes]
+    ).with_context(|| {
+        format!("Failed to insert '({}, <created_at>, {}, {}, {}, {}, {})' into HabitHistory.", id, name, description, days, hour, minutes)
+    })?;
 
     Ok(())
 }
@@ -57,8 +143,10 @@ pub fn habit_update_name(
     habit_name: &str,
     new_name: &str,
 ) -> anyhow::Result<()> {
+    habit_write_history(conn, habit_name)?;
+
     conn.execute(
-        "UPDATE habit SET name = ?1 WHERE name = ?2",
+        "UPDATE Habit SET name = ?1 WHERE name = ?2",
         rusqlite::params![new_name, habit_name],
     )
     .with_context(|| {
@@ -76,13 +164,15 @@ pub fn habit_update_description(
     habit_name: &str,
     new_description: &str,
 ) -> anyhow::Result<()> {
+    habit_write_history(conn, habit_name)?;
+
     conn.execute(
-        "UPDATE habit SET description = ?1 WHERE name = ?2",
+        "UPDATE Habit SET description = ?1 WHERE name = ?2",
         rusqlite::params![new_description, habit_name],
     )
     .with_context(|| {
         format!(
-            "Failed to update description of habit '{}' to '{}'.",
+            "Failed to update description of Habit '{}', to '{}'.",
             habit_name, new_description
         )
     })?;
@@ -95,20 +185,17 @@ pub fn habit_update_days(
     habit_name: &str,
     new_days: &[Day],
 ) -> anyhow::Result<()> {
-    let new_days_str = new_days
-        .iter()
-        .map(|d| d.to_string())
-        .collect::<Vec<String>>()
-        .join(" ");
+    habit_write_history(conn, habit_name)?;
 
+    let byte = habit::days_to_byte(new_days);
     conn.execute(
-        "UPDATE habit SET days = ?1 WHERE name = ?2",
-        rusqlite::params![new_days_str, habit_name],
+        "UPDATE Habit SET days = ?1 WHERE name = ?2",
+        rusqlite::params![byte, habit_name],
     )
     .with_context(|| {
         format!(
-            "Failed to update days of habit '{}' to '{}'.",
-            habit_name, new_days_str
+            "Failed to update days of Habit '{}', to '{}'.",
+            habit_name, byte
         )
     })?;
 
@@ -116,13 +203,15 @@ pub fn habit_update_days(
 }
 
 pub fn habit_update_at(conn: &Connection, habit_name: &str, new_at: &At) -> anyhow::Result<()> {
+    habit_write_history(conn, habit_name)?;
+
     conn.execute(
-        "UPDATE habit SET hour = ?1, minutes = ?2 WHERE name = ?3",
+        "UPDATE Habit SET hour = ?1, minutes = ?2 WHERE name = ?3",
         rusqlite::params![new_at.hour, new_at.minutes, habit_name],
     )
     .with_context(|| {
         format!(
-            "Failed to update at of habit '{}' to '{}'.",
+            "Failed to update at of Habit '{}', to '{}'.",
             habit_name, new_at
         )
     })?;
@@ -132,7 +221,7 @@ pub fn habit_update_at(conn: &Connection, habit_name: &str, new_at: &At) -> anyh
 
 pub fn habit_exists(conn: &Connection, habit_name: &str) -> anyhow::Result<bool> {
     match conn.query_row(
-        "SELECT name FROM habit WHERE name = ?1",
+        "SELECT name FROM Habit WHERE name = ?1",
         rusqlite::params![habit_name],
         |_| Ok(()),
     ) {
@@ -147,72 +236,48 @@ pub fn habit_exists(conn: &Connection, habit_name: &str) -> anyhow::Result<bool>
 }
 
 pub fn habit_get_by_name(conn: &Connection, habit_name: &str) -> anyhow::Result<Habit> {
-    let query_res = conn.query_row(
-        "SELECT name, description, days, hour, minutes FROM habit WHERE name = ?1",
+    conn.query_row(
+        "SELECT name, description, days, hour, minutes FROM Habit WHERE name = ?1",
         rusqlite::params![habit_name],
         |row| {
-            let days: Vec<Day> = row
-                .get::<usize, String>(2)?
-                .split(' ')
-                .map(|d_str| Day::from_str(d_str).expect("Days from database should be valid."))
-                .collect();
+            let name = row.get::<_, String>(0)?;
+            let description = row.get::<_, String>(1)?;
+            let days = habit::byte_to_days(row.get::<_, u8>(2)?);
             let at = At::build(row.get::<usize, u8>(3)?, row.get::<usize, u8>(4)?)
                 .expect("Hour and minutes from database should be valid.");
-            Ok(Habit::new(
-                row.get::<usize, String>(0)?,
-                row.get::<usize, String>(1)?,
-                days,
-                at,
-            ))
+            Ok(Habit::new(name, description, days, at))
         },
-    );
-
-    match query_res {
-        Ok(habit) => Ok(habit),
-        Err(rusqlite::Error::QueryReturnedNoRows) => {
-            Err(anyhow!("Habit '{}' does not exists!", habit_name))
-        }
-        Err(e) => Err(anyhow!(
-            "Query to select habit with name '{}' failed.\n{}",
-            habit_name,
-            e
-        )),
-    }
+    )
+    .with_context(|| format!("Failed to select Habit with name '{}'.", habit_name))
 }
 
 pub fn habit_get_with_most_recent_log(conn: &Connection) -> anyhow::Result<Habit> {
-    let habit_name = conn
+    let habit_id = conn
         .query_row(
-            "SELECT habit FROM log ORDER BY created DESC LIMIT 1;
-",
+            "SELECT habit_id FROM Log ORDER BY created_at DESC LIMIT 1",
             (),
-            |row| row.get::<usize, String>(0),
+            |row| row.get::<_, usize>(0),
         )
         .with_context(|| "Failed to select the name of the habit that has the most recent log.")?;
+    let habit_name = habit_get_name_from_id(conn, habit_id)?;
+    let habit = habit_get_by_name(conn, &habit_name)?;
 
-    habit_get_by_name(conn, &habit_name)
+    Ok(habit)
 }
 
 pub fn habit_get_all(conn: &Connection) -> anyhow::Result<Vec<Habit>> {
     let mut stmt = conn
-        .prepare("SELECT name, description, days, hour, minutes FROM habit")
+        .prepare("SELECT name, description, days, hour, minutes FROM Habit")
         .with_context(|| "Failed to prepare 'select all habits' statement.")?;
 
     let rows = stmt
         .query_map([], |row| {
-            let days: Vec<Day> = row
-                .get::<usize, String>(2)?
-                .split(' ')
-                .map(|d_str| Day::from_str(d_str).expect("Days from database should be valid."))
-                .collect();
-            let at = At::build(row.get::<usize, u8>(3)?, row.get::<usize, u8>(4)?)
+            let name = row.get::<_, String>(0)?;
+            let description = row.get::<_, String>(1)?;
+            let days = habit::byte_to_days(row.get::<_, u8>(2)?);
+            let at = At::build(row.get::<_, u8>(3)?, row.get::<_, u8>(4)?)
                 .expect("Hour and minutes from database should be valid.");
-            Ok(Habit::new(
-                row.get::<usize, String>(0)?,
-                row.get::<usize, String>(1)?,
-                days,
-                at,
-            ))
+            Ok(Habit::new(name, description, days, at))
         })
         .with_context(|| "Failed to select all habits.")?;
 
@@ -224,39 +289,74 @@ pub fn habit_get_all(conn: &Connection) -> anyhow::Result<Vec<Habit>> {
     Ok(habits)
 }
 
-pub fn log_create_table(conn: &Connection) -> anyhow::Result<()> {
-    conn.execute(
-        "CREATE TABLE log (
-            created   INTEGER PRIMARY KEY,
-            habit     TEXT NOT NULL REFERENCES habit(name) ON DELETE CASCADE
-        )",
-        (),
+pub fn habit_get_names(conn: &Connection) -> anyhow::Result<Vec<String>> {
+    let mut stmt = conn
+        .prepare("SELECT name FROM Habit")
+        .with_context(|| "Failed to prepare statement to select Habit names.")?;
+    let name_results = stmt.query_map([], |row| row.get::<_, String>(0))?;
+
+    let mut names = vec![];
+    for name_res in name_results {
+        names.push(name_res?);
+    }
+
+    Ok(names)
+}
+
+fn habit_get_id_from_name(conn: &Connection, habit_name: &str) -> anyhow::Result<usize> {
+    conn.query_row(
+        "SELECT id FROM Habit WHERE name = ?1",
+        rusqlite::params![habit_name],
+        |row| row.get::<_, usize>(0),
     )
-    .with_context(|| "Failed to create log table.")?;
+    .with_context(|| format!("Failed to select id of Habit with name '{}'.", habit_name))
+}
+
+fn habit_get_name_from_id(conn: &Connection, habit_id: usize) -> anyhow::Result<String> {
+    conn.query_row(
+        "SELECT name FROM Habit WHERE id = ?1",
+        rusqlite::params![habit_id],
+        |row| row.get::<_, String>(0),
+    )
+    .with_context(|| format!("Failed to select name of Habit with id '{}'.", habit_id))
+}
+
+pub fn habit_delete(conn: &Connection, habit_name: &str) -> anyhow::Result<()> {
+    // In sqlite, need to enable foreign keys at runtime using a pragma.
+    // See <https://www.sqlite.org/foreignkeys.html>.
+    // In this case, this is for the deletion to cascade to Log and HabitHistory.
+    conn.execute("PRAGMA foreign_keys = ON;", ())?;
+    conn.execute(
+        "DELETE FROM Habit WHERE name = ?1",
+        rusqlite::params![habit_name],
+    )
+    .with_context(|| format!("Failed to delete Habit with name '{}'.", habit_name))?;
 
     Ok(())
 }
 
-pub fn log_insert(conn: &Connection, habit: &str) -> anyhow::Result<()> {
+pub fn log_insert(conn: &Connection, habit_name: &str) -> anyhow::Result<()> {
+    let habit_id = habit_get_id_from_name(conn, habit_name)?;
     conn.execute(
-        "INSERT INTO log (created, habit) VALUES (?1, ?2);",
-        rusqlite::params![chrono::Local::now().timestamp(), habit],
+        "INSERT INTO Log (created_at, habit_id) VALUES (?1, ?2)",
+        rusqlite::params![chrono::Local::now().timestamp(), habit_id],
     )
     .with_context(|| "Failed to insert log into database.")?;
 
     Ok(())
 }
 
-pub fn get_n_logs_for_habit(conn: &Connection, habit: &str) -> anyhow::Result<usize> {
+pub fn get_n_logs_for_habit(conn: &Connection, habit_name: &str) -> anyhow::Result<usize> {
+    let habit_id = habit_get_id_from_name(conn, habit_name)?;
     conn.query_row(
-        "SELECT COUNT(*) FROM log WHERE habit = ?1",
-        rusqlite::params![habit],
-        |row| row.get::<usize, usize>(0),
+        "SELECT COUNT(1) FROM Log WHERE habit_id = ?1",
+        rusqlite::params![habit_id],
+        |row| row.get::<_, usize>(0),
     )
     .with_context(|| {
         format!(
-            "Failed to count number of logged reps for habit '{}'.",
-            habit
+            "Failed to count number of logged reps for Habit '{}'.",
+            habit_name
         )
     })
 }

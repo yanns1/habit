@@ -33,3 +33,6 @@ regex = "1.11.1"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 termsize = "0.1.9"
 textwrap = { version = "0.16.1" }
+
+[dev-dependencies]
+itertools = "0.14.0"

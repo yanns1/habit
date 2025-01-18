@@ -1,8 +1,7 @@
-use std::{fmt, str::FromStr};
-
 use crate::utils;
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::{fmt, str::FromStr};
 
 lazy_static! {
     static ref AT_RE: Regex = Regex::new(r"(?<hour>\d\d):(?<minutes>\d\d)").unwrap();
@@ -145,7 +144,7 @@ impl std::error::Error for ParseAtError {
 // Day
 // ---
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Day {
     Monday,
     Tuesday,
@@ -154,6 +153,54 @@ pub enum Day {
     Friday,
     Saturday,
     Sunday,
+}
+
+impl TryFrom<u8> for Day {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Day::Monday),
+            2 => Ok(Day::Tuesday),
+            4 => Ok(Day::Wednesday),
+            8 => Ok(Day::Thursday),
+            16 => Ok(Day::Friday),
+            32 => Ok(Day::Saturday),
+            64 => Ok(Day::Sunday),
+            _ => Err(format!(
+                "Cannot get a `Day` from `u8` value given, {}",
+                value
+            )),
+        }
+    }
+}
+
+impl From<Day> for u8 {
+    fn from(value: Day) -> Self {
+        match value {
+            Day::Monday => 1,
+            Day::Tuesday => 2,
+            Day::Wednesday => 4,
+            Day::Thursday => 8,
+            Day::Friday => 16,
+            Day::Saturday => 32,
+            Day::Sunday => 64,
+        }
+    }
+}
+
+impl From<&Day> for u8 {
+    fn from(value: &Day) -> Self {
+        match *value {
+            Day::Monday => u8::pow(2, 0),
+            Day::Tuesday => u8::pow(2, 1),
+            Day::Wednesday => u8::pow(2, 2),
+            Day::Thursday => u8::pow(2, 3),
+            Day::Friday => u8::pow(2, 4),
+            Day::Saturday => u8::pow(2, 5),
+            Day::Sunday => u8::pow(2, 6),
+        }
+    }
 }
 
 impl fmt::Display for Day {
@@ -186,6 +233,64 @@ impl FromStr for Day {
             "Saturday" => Ok(Self::Saturday),
             "Sunday" => Ok(Self::Sunday),
             _ => Err(ParseDayError),
+        }
+    }
+}
+
+pub fn days_to_byte(days: &[Day]) -> u8 {
+    days.iter()
+        .fold(0, |acc, d| acc + <&Day as Into<u8>>::into(d))
+}
+
+pub fn byte_to_days(mut byte: u8) -> Vec<Day> {
+    let mut days = vec![];
+    if byte & 1 == 1 {
+        days.push(Day::Monday);
+    }
+    byte >>= 1;
+    if byte & 1 == 1 {
+        days.push(Day::Tuesday);
+    }
+    byte >>= 1;
+    if byte & 1 == 1 {
+        days.push(Day::Wednesday);
+    }
+    byte >>= 1;
+    if byte & 1 == 1 {
+        days.push(Day::Thursday);
+    }
+    byte >>= 1;
+    if byte & 1 == 1 {
+        days.push(Day::Friday);
+    }
+    byte >>= 1;
+    if byte & 1 == 1 {
+        days.push(Day::Saturday);
+    }
+    byte >>= 1;
+    if byte & 1 == 1 {
+        days.push(Day::Sunday);
+    }
+
+    days
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use itertools::Itertools;
+    use std::collections::HashSet;
+
+    #[test]
+    fn conversion_between_days_and_byte() {
+        let mut days = vec![Day::Monday, Day::Tuesday];
+        let n_days = days.len();
+        for perm in days.into_iter().permutations(n_days) {
+            let byte = days_to_byte(&perm[..]);
+            let days = byte_to_days(byte);
+            let perm_set: HashSet<Day> = perm.into_iter().collect();
+            let days_set: HashSet<Day> = days.into_iter().collect();
+            assert_eq!(days_set, perm_set);
         }
     }
 }

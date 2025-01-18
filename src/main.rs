@@ -11,12 +11,10 @@ fn main() -> anyhow::Result<()> {
     // Make directories
     fs::create_dir_all(DATA_DIR.clone())?;
 
-    // Check if the DB is made, if not create it.
+    // Check if the DB exists. If not, create it.
     if !DB_PATH.exists() {
         let conn = db::open_db()?;
-        // Make the tables.
-        db::habit_create_table(&conn)?;
-        db::log_create_table(&conn)?;
+        db::create_tables(&conn)?;
     }
 
     // Run engine.
