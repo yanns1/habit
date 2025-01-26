@@ -19,7 +19,8 @@ impl Engine for ListEngine {
         let conn = db::open_db()?;
 
         if self.verbose {
-            let habits = db::habit_get_all(&conn)?;
+            let mut habits = db::habit_get_all(&conn)?;
+            habits.sort_by_key(|habit| habit.name.clone());
 
             let max_width = termsize::get()
                 .map(|size| size.cols)
@@ -49,7 +50,8 @@ impl Engine for ListEngine {
                 }
             }
         } else {
-            let habit_names = db::habit_get_names(&conn)?;
+            let mut habit_names = db::habit_get_names(&conn)?;
+            habit_names.sort();
             for habit_name in habit_names {
                 println!("{}", habit_name);
             }
