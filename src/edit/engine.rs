@@ -22,7 +22,7 @@ impl Engine for EditEngine {
 
         // check if habit exists in db, if not error
         if !db::habit_exists(&conn, &self.habit)? {
-            return Err(anyhow!("Habit '{}' does not exists!", self.habit));
+            return Err(anyhow!("Habit '{}' does not exist!", self.habit));
         }
 
         // show input depending on what, then update db

@@ -18,7 +18,7 @@ impl Engine for DeleteEngine {
 
         // check if habit exists in db, if not error
         if !db::habit_exists(&conn, &self.habit)? {
-            return Err(anyhow!("Habit '{}' does not exists!", self.habit));
+            return Err(anyhow!("Habit '{}' does not exist!", self.habit));
         }
 
         // ask for confirmation
