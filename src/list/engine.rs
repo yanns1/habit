@@ -28,7 +28,11 @@ impl Engine for ListEngine {
                 .unwrap_or(u16::MAX) as usize;
 
             for habit in habits {
-                println!("{}", habit.name.bold());
+                let mut header = format!("{}", habit.name.bold());
+                if habit.suspended {
+                    header.push_str(&format!(" {}", "(suspended)".italic()));
+                }
+                println!("{}", header);
                 for line in textwrap::wrap(&habit.description, max_width) {
                     println!("    {}", line);
                 }
