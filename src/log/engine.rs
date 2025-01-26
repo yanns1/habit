@@ -16,17 +16,21 @@ impl Engine for LogEngine {
     fn run(&mut self) -> anyhow::Result<()> {
         let conn = db::open_db()?;
 
-        // check if habit exists in db, if not error
+        // Check if habit exists.
         if !db::habit_exists(&conn, &self.habit)? {
             return Err(anyhow!("Habit '{}' does not exist!", self.habit));
         }
 
-        // log a rep
+        // Check if habit is suspended.
+        if db::habit_suspended(&conn, &self.habit)? {
+            println!("Nothing done, because habit '{}' is suspended. If you want, you can resume it with `habit resume {}`.", self.habit, self.habit);
+            return Ok(());
+        }
+
+        // Log a rep.
         db::log_insert(&conn, &self.habit)?;
 
-        // count current number of logged reps for habit
         let n_reps = db::get_n_logs_for_habit(&conn, &self.habit)?;
-
         println!("Rep successfully logged.");
         println!(
             "Good job! You are at {} for habit '{}'.",
