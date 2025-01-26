@@ -18,7 +18,7 @@ impl Engine for NewEngine {
         let description = prompt::prompt_habit_description()?;
         let days = prompt::prompt_habit_days()?;
         let at = prompt::prompt_habit_at()?;
-        let habit = Habit::new(name, description, days, at);
+        let habit = Habit::new(name, description, days, at, false);
 
         // add to DB
         let conn = db::open_db()?;

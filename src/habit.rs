@@ -16,15 +16,17 @@ pub struct Habit {
     pub description: String,
     pub days: Vec<Day>,
     pub at: At,
+    pub suspended: bool,
 }
 
 impl Habit {
-    pub fn new(name: String, description: String, days: Vec<Day>, at: At) -> Self {
+    pub fn new(name: String, description: String, days: Vec<Day>, at: At, suspended: bool) -> Self {
         Self {
             name,
             description,
             days,
             at,
+            suspended,
         }
     }
 }
