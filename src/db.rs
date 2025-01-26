@@ -232,7 +232,7 @@ pub fn habit_update_suspended(
     habit_write_history(conn, habit_name)?;
 
     conn.execute(
-        "UPDATE Habit SET suspended = ?1 WHERE name = ?3",
+        "UPDATE Habit SET suspended = ?1 WHERE name = ?2",
         rusqlite::params![new_suspended, habit_name],
     )
     .with_context(|| {
@@ -259,6 +259,20 @@ pub fn habit_exists(conn: &Connection, habit_name: &str) -> anyhow::Result<bool>
             e
         )),
     }
+}
+
+pub fn habit_suspended(conn: &Connection, habit_name: &str) -> anyhow::Result<bool> {
+    conn.query_row(
+        "SELECT suspended FROM Habit WHERE name = ?1",
+        rusqlite::params![habit_name],
+        |row| row.get::<_, bool>(0),
+    )
+    .with_context(|| {
+        format!(
+            "Failed to select suspended in Habit with name '{}'.",
+            habit_name
+        )
+    })
 }
 
 pub fn habit_get_by_name(conn: &Connection, habit_name: &str) -> anyhow::Result<Habit> {
