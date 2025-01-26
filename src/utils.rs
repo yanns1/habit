@@ -18,7 +18,10 @@ pub fn left_pad(s: &str, c: char, n: usize) -> String {
 
 pub fn display_days(days: &[Day]) -> String {
     if days.is_empty() {
-        return String::from("");
+        return "".to_string();
+    }
+    if days.len() == 1 {
+        return days[0].to_string();
     }
 
     let mut res = String::from("");
