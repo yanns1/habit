@@ -4,6 +4,7 @@ use crate::edit;
 use crate::list;
 use crate::log;
 use crate::new;
+use crate::resume;
 use crate::show;
 use crate::suspend;
 
@@ -19,6 +20,7 @@ pub fn get_engine(cli: cli::Cli) -> Box<dyn Engine> {
         crate::cli::Command::List(cli) => list::get_engine(cli),
         crate::cli::Command::Log(cli) => log::get_engine(cli),
         crate::cli::Command::Suspend(cli) => suspend::get_engine(cli),
+        crate::cli::Command::Resume(cli) => resume::get_engine(cli),
         crate::cli::Command::Show(cli) => show::get_engine(cli),
     }
 }

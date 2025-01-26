@@ -8,6 +8,7 @@ pub mod list;
 pub mod log;
 pub mod new;
 pub mod prompt;
+pub mod resume;
 pub mod show;
 pub mod suspend;
 pub mod tui;
