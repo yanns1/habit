@@ -5,6 +5,7 @@ use crate::list;
 use crate::log;
 use crate::new;
 use crate::show;
+use crate::suspend;
 
 pub trait Engine {
     fn run(&mut self) -> anyhow::Result<()>;
@@ -17,6 +18,7 @@ pub fn get_engine(cli: cli::Cli) -> Box<dyn Engine> {
         crate::cli::Command::Delete(cli) => delete::get_engine(cli),
         crate::cli::Command::List(cli) => list::get_engine(cli),
         crate::cli::Command::Log(cli) => log::get_engine(cli),
+        crate::cli::Command::Suspend(cli) => suspend::get_engine(cli),
         crate::cli::Command::Show(cli) => show::get_engine(cli),
     }
 }
