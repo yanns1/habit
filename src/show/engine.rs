@@ -4,6 +4,7 @@ use crate::engine::Engine;
 use crate::habit::Habit;
 use crate::show::cli::ShowCli;
 use crate::tui;
+use anyhow::anyhow;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Direction;
@@ -43,22 +44,29 @@ impl Engine for ShowEngine {
     fn run(&mut self) -> anyhow::Result<()> {
         let conn = db::open_db()?;
 
-        // Prepare the data
-        // ----------------
-        let init_habit = match self.habit {
-            // if provided, go get data from database to construct a Habit
-            Some(ref habit_name) => db::habit_get_by_name(&conn, habit_name)?,
-            // if not provided, select the one for which there is the most recent log
-            None => db::habit_get_with_most_recent_log(&conn)?,
-        };
-        let habits = db::habit_get_all(&conn)?;
-        let init_habit_idx = habits
-            .iter()
-            .position(|habit| habit.name == init_habit.name)
-            .expect("Initial habit comes from database, so should be within all the habits");
+        // Check if habit exists in db, if not error.
+        if let Some(ref habit_name) = self.habit {
+            if !db::habit_exists(&conn, habit_name)? {
+                return Err(anyhow!("Habit '{}' does not exist!", habit_name));
+            }
+        }
 
-        // Run the TUI
-        // -----------
+        // Prepare init data.
+        let habits = db::habit_get_all(&conn)?;
+        let init_habit_idx = if let Some(ref habit_name) = self.habit {
+            habits
+                .iter()
+                .position(|habit| habit.name == *habit_name)
+                .expect("Initial habit comes from database, so should be within all the habits.")
+        } else {
+            let habit_name = db::habit_get_name_with_most_recent_log(&conn)?;
+            habits
+                .iter()
+                .position(|habit| habit.name == habit_name)
+                .expect("Initial habit comes from database, so should be within all the habits.")
+        };
+
+        // Run the TUI.
         let mut terminal = tui::init()?;
         let app_result = App::build(habits, init_habit_idx)?.run(&mut terminal);
         tui::restore(&mut terminal)?;

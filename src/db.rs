@@ -292,7 +292,7 @@ pub fn habit_get_by_name(conn: &Connection, habit_name: &str) -> anyhow::Result<
     .with_context(|| format!("Failed to select Habit with name '{}'.", habit_name))
 }
 
-pub fn habit_get_with_most_recent_log(conn: &Connection) -> anyhow::Result<Habit> {
+pub fn habit_get_name_with_most_recent_log(conn: &Connection) -> anyhow::Result<String> {
     let habit_id = conn
         .query_row(
             "SELECT habit_id FROM Log ORDER BY created_at DESC LIMIT 1",
@@ -300,10 +300,8 @@ pub fn habit_get_with_most_recent_log(conn: &Connection) -> anyhow::Result<Habit
             |row| row.get::<_, usize>(0),
         )
         .with_context(|| "Failed to select the name of the habit that has the most recent log.")?;
-    let habit_name = habit_get_name_from_id(conn, habit_id)?;
-    let habit = habit_get_by_name(conn, &habit_name)?;
 
-    Ok(habit)
+    habit_get_name_from_id(conn, habit_id)
 }
 
 pub fn habit_get_all(conn: &Connection) -> anyhow::Result<Vec<Habit>> {
