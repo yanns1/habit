@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn conversion_between_days_and_byte() {
-        let mut days = vec![Day::Monday, Day::Tuesday];
+        let days = vec![Day::Monday, Day::Tuesday];
         let n_days = days.len();
         for perm in days.into_iter().permutations(n_days) {
             let byte = days_to_byte(&perm[..]);
