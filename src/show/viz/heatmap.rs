@@ -1,22 +1,22 @@
-use crate::habit::Habit;
+use crate::db;
+use crate::habit::{Day, Habit};
 use crate::utils;
-use chrono::{Datelike, Weekday};
-use chrono::{TimeZone, Utc};
+use chrono::{Datelike, Local, TimeZone, Weekday};
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::prelude::{Buffer, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::Span;
 use ratatui::widgets::Widget;
+use rusqlite::Connection;
 
-pub struct HeatMap<'a> {
-    habit: &'a Habit,
-}
-
-impl<'a> HeatMap<'a> {
-    pub fn new(habit: &'a Habit) -> Self {
-        HeatMap { habit }
-    }
-}
+const N_WEEKS_IN_YEAR: u16 = 53;
+const N_DAYS_IN_WEEK: u16 = 7;
+const WIDTH_FOR_DAY: u16 = 3;
+const HEIGHT_FOR_DAY: u16 = 2;
+const WIDTH_FOR_DAY_NAME: u16 = 3;
+const HEIGHT_FOR_DAY_NAME: u16 = 2;
+const WIDTH_FOR_NAV: u16 = 9;
+const HEIGHT_FOR_NAV: u16 = 1;
 
 #[derive(Debug, Clone, Copy)]
 /// The "type" of a day, as we are concerned about when we need to know
@@ -26,124 +26,262 @@ enum DayType {
     NotInYear,
     /// A day to come in the future.
     ToCome,
-    /// A day for which the habit need not be performed/logged.
+    /// A day for which the habit needs not be performed/logged.
     ShouldNotHabit,
-    /// A day for which the habit need to be performed/logged.
+    /// A day for which the habit needs to be performed/logged.
     /// Contains a boolean indicating whether it was effectively logged or not.
     ShouldHabit(bool),
 }
 
-/// Add a red background to the span if it corresponds to today,
-/// otherwise return as is.
-macro_rules! highlight_if_today {
-    ($today_idx_opt:expr, $i:expr, $span:expr) => {{
-        let mut sp = $span;
-        if let Some(today_idx) = $today_idx_opt {
-            if $i == today_idx {
-                sp = sp.style(Style::new().on_red())
-            }
-        }
-        sp
-    }};
+pub struct HeatMap {
+    conn: Option<Connection>,
+
+    days_mat: Vec<DayType>,
+
+    start_idx: usize,
+    today_idx: usize,
 }
 
-impl<'a> Widget for HeatMap<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        // 7 days for 53 weeks, the maximum there can be in a year
-        let w = 53;
-        let h = 7;
-
-        // Make a centered rect for the heatmap,
-        // leveraging our knowledge of the exact number
-        // of rows and columns it will have.
-        let [_, rect, _] = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Fill(1),
-                Constraint::Length(h),
-                Constraint::Fill(1),
-            ])
-            .areas(area);
-        let [_, rect, _] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Fill(1),
-                Constraint::Length(2 * w),
-                Constraint::Fill(1),
-            ])
-            .areas(rect);
-
+impl HeatMap {
+    pub fn new() -> Self {
         // Make a days matrix, a 7 by 53 matrix where each cell corresponds to a day of the year.
-        // A cell contains the "type" of the day it corresponds to (see DayType).
-        let mut days_mat: Vec<DayType> = vec![DayType::ShouldNotHabit; (w as usize) * (h as usize)];
+        // A cell contains the "type" of the day it corresponds to (see `DayType`).
+        let mut days_mat =
+            vec![DayType::NotInYear; (N_WEEKS_IN_YEAR as usize) * (N_DAYS_IN_WEEK as usize)];
 
-        let year = 2024;
-        let first_day_of_year = Utc.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
+        let today = Local::now();
+        let year = today.year();
+        let first_day_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
         let first_weekday_of_year = first_day_of_year.weekday();
-        let last_day_of_year = Utc.with_ymd_and_hms(year, 12, 31, 0, 0, 0).unwrap();
+        let last_day_of_year = Local.with_ymd_and_hms(year, 12, 31, 0, 0, 0).unwrap();
         let last_weekday_of_year = last_day_of_year.weekday();
-        let today = Utc::now();
 
-        // Set all days in previous year to DayType::NotInYear.
-        let mut start_idx: usize = 0;
+        // Set all days in previous year to `DayType::NotInYear`.
+        let mut start_idx = 0;
         while Weekday::try_from((start_idx % 7) as u8).unwrap() != first_weekday_of_year {
             days_mat[start_idx] = DayType::NotInYear;
             start_idx += 1;
         }
-        // Set all days in next year to DayType::NotInYear.
-        let mut end_idx: usize = days_mat.capacity() - 1;
+
+        // Set all days in next year to `DayType::NotInYear`.
+        let mut end_idx = days_mat.capacity() - 1;
         while Weekday::try_from((end_idx % 7) as u8).unwrap() != last_weekday_of_year {
             days_mat[end_idx] = DayType::NotInYear;
             end_idx -= 1;
         }
 
-        // For all days after today, set to DayType::ToCome.
-        let mut today_idx_opt: Option<usize> = None;
-        if today.year() == year {
-            let today_year_offset = utils::nth_day_of_year(&today);
-            today_idx_opt = Some((today_year_offset as usize) - 1);
-            for d in days_mat[start_idx + (today_year_offset as usize)..end_idx + 1].iter_mut() {
-                *d = DayType::ToCome;
-            }
+        // For all days after today, set to `DayType::ToCome`.
+        let today_idx = start_idx + (utils::nth_day_of_year(&today) as usize) - 1;
+        for d in days_mat[(today_idx + 1)..(end_idx + 1)].iter_mut() {
+            *d = DayType::ToCome;
         }
 
-        // TODO: Select logs for habit in year.
-        // Use the day number (in year) as an offset into the matrix.
-        let done = vec![(1, true), (8, true), (15, false), (22, true)];
-        for (i, b) in done {
-            days_mat[i] = DayType::ShouldHabit(b);
+        HeatMap {
+            conn: None,
+            days_mat,
+            start_idx,
+            today_idx,
         }
+    }
 
-        let mut i = 0;
-        let start_x = rect.x;
-        let end_x = start_x + 2 * w; // 2*w because one char for the cell and one space for the gutter
-        let start_y = rect.y;
-        let end_y = start_y + h;
-        for x in (start_x..end_x).step_by(2) {
-            for y in start_y..end_y {
-                let span = match days_mat[i] {
-                    DayType::NotInYear => Span::from("~"),
-                    DayType::ToCome => Span::from("?"),
-                    DayType::ShouldNotHabit => {
-                        highlight_if_today!(today_idx_opt, i, Span::from("_"))
+    pub fn update_for_habit(&mut self, habit: &Habit) -> anyhow::Result<()> {
+        self.update_days_mat(habit)
+    }
+
+    fn update_days_mat(&mut self, habit: &Habit) -> anyhow::Result<()> {
+        if self.conn.is_none() {
+            self.conn = Some(db::open_db()?);
+        }
+        let conn = self.conn.as_ref().unwrap();
+
+        let log_datetimes = db::habit_get_logs(conn, &habit.name)?;
+        let mut log_offsets = log_datetimes
+            .iter()
+            .map(|datetime| self.start_idx + (utils::nth_day_of_year(datetime) as usize) - 1)
+            .collect::<Vec<usize>>();
+        log_offsets.sort();
+        let mut log_offset_idx: usize = 0;
+        let mut weekday = Weekday::try_from((self.start_idx % 7) as u8).unwrap();
+        for i in self.start_idx..self.today_idx + 1 {
+            self.days_mat[i] = if habit.days.contains(&Day::from(weekday)) {
+                if let Some(&offset) = log_offsets.get(log_offset_idx) {
+                    if offset < i {
+                        log_offset_idx += 1;
                     }
-                    DayType::ShouldHabit(true) => highlight_if_today!(
-                        today_idx_opt,
-                        i,
-                        Span::styled("1", Style::new().green().bold())
-                    ),
-                    DayType::ShouldHabit(false) => highlight_if_today!(
-                        today_idx_opt,
-                        i,
-                        Span::styled("0", Style::new().red().bold())
-                    ),
+
+                    if offset == i {
+                        DayType::ShouldHabit(true)
+                    } else {
+                        DayType::ShouldHabit(false)
+                    }
+                } else {
+                    DayType::ShouldHabit(false)
+                }
+            } else {
+                if let Some(&offset) = log_offsets.get(log_offset_idx) {
+                    if offset < i {
+                        log_offset_idx += 1;
+                    }
+                }
+
+                DayType::ShouldNotHabit
+            };
+
+            weekday = weekday.succ();
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for HeatMap {
+    fn default() -> Self {
+        HeatMap::new()
+    }
+}
+
+impl Widget for &mut HeatMap {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        // Layout
+        let [_, days_rect, nav_rect, _] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Length(HEIGHT_FOR_DAY * N_DAYS_IN_WEEK),
+                Constraint::Length(HEIGHT_FOR_NAV),
+                Constraint::Fill(1),
+            ])
+            .areas(area);
+        let [_, days_rect, _, days_mat_rect, _] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Length(WIDTH_FOR_DAY_NAME),
+                Constraint::Length(2),
+                Constraint::Length(WIDTH_FOR_DAY * N_WEEKS_IN_YEAR),
+                Constraint::Fill(1),
+            ])
+            .areas(days_rect);
+        let [_, nav_rect, _] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Length(WIDTH_FOR_NAV),
+                Constraint::Fill(1),
+            ])
+            .areas(nav_rect);
+
+        // Styles
+        // NOTE: Cannot make these constants, because some methods are not const.
+        let on_black = Style::new().white().on_black();
+        let on_gray = Style::new().black().on_gray();
+        let on_dark_gray = Style::new().white().on_dark_gray();
+        let on_light_green = Style::new().black().on_light_green();
+        let on_light_red = Style::new().white().on_light_red();
+
+        // Render day names
+        buf.set_span(
+            days_rect.x,
+            days_rect.y,
+            &Span::styled("Mon", on_black),
+            WIDTH_FOR_DAY_NAME,
+        );
+        buf.set_span(
+            days_rect.x,
+            days_rect.y + HEIGHT_FOR_DAY_NAME,
+            &Span::styled("Tue", on_black),
+            WIDTH_FOR_DAY_NAME,
+        );
+        buf.set_span(
+            days_rect.x,
+            days_rect.y + 2 * HEIGHT_FOR_DAY_NAME,
+            &Span::styled("Wed", on_black),
+            WIDTH_FOR_DAY_NAME,
+        );
+        buf.set_span(
+            days_rect.x,
+            days_rect.y + 3 * HEIGHT_FOR_DAY_NAME,
+            &Span::styled("Thu", on_black),
+            WIDTH_FOR_DAY_NAME,
+        );
+        buf.set_span(
+            days_rect.x,
+            days_rect.y + 4 * HEIGHT_FOR_DAY_NAME,
+            &Span::styled("Fri", on_black),
+            WIDTH_FOR_DAY_NAME,
+        );
+        buf.set_span(
+            days_rect.x,
+            days_rect.y + 5 * HEIGHT_FOR_DAY_NAME,
+            &Span::styled("Sat", on_black),
+            WIDTH_FOR_DAY_NAME,
+        );
+        buf.set_span(
+            days_rect.x,
+            days_rect.y + 6 * HEIGHT_FOR_DAY_NAME,
+            &Span::styled("Sun", on_black),
+            WIDTH_FOR_DAY_NAME,
+        );
+
+        // Render days matrix
+        let mut i = 0;
+        let start_x = days_mat_rect.x;
+        let end_x = start_x + WIDTH_FOR_DAY * N_WEEKS_IN_YEAR;
+        let start_y = days_mat_rect.y;
+        let end_y = start_y + HEIGHT_FOR_DAY * N_DAYS_IN_WEEK;
+        for x in (start_x..end_x).step_by(WIDTH_FOR_DAY as usize) {
+            for y in (start_y..end_y).step_by(HEIGHT_FOR_DAY as usize) {
+                let span = match self.days_mat[i] {
+                    DayType::NotInYear => None,
+                    DayType::ToCome => Some(Span::styled(
+                        " ".repeat((WIDTH_FOR_DAY - 1) as usize),
+                        on_dark_gray,
+                    )),
+                    DayType::ShouldNotHabit => Some(Span::styled(
+                        if i == self.today_idx {
+                            "ty".to_string()
+                        } else {
+                            " ".repeat((WIDTH_FOR_DAY - 1) as usize)
+                        },
+                        if i == self.today_idx {
+                            on_dark_gray
+                        } else {
+                            on_gray
+                        },
+                    )),
+                    DayType::ShouldHabit(true) => Some(Span::styled(
+                        if i == self.today_idx {
+                            "ty".to_string()
+                        } else {
+                            " ".repeat((WIDTH_FOR_DAY - 1) as usize)
+                        },
+                        on_light_green,
+                    )),
+                    DayType::ShouldHabit(false) => Some(Span::styled(
+                        if i == self.today_idx {
+                            "ty".to_string()
+                        } else {
+                            " ".repeat((WIDTH_FOR_DAY - 1) as usize)
+                        },
+                        on_light_red,
+                    )),
                 };
 
-                buf.set_span(x, y, &span, 1);
-                buf.set_span(x + 1, y, &Span::from(" "), 1);
+                if let Some(span) = span {
+                    buf.set_span(x, y, &span, WIDTH_FOR_DAY - 1);
+                }
+
                 i += 1;
             }
         }
+
+        // Render nav
+        buf.set_span(
+            nav_rect.x,
+            nav_rect.y,
+            &Span::styled("< l | r >", on_black),
+            WIDTH_FOR_NAV,
+        );
 
         // TODO: Make it stateful:
         //  1. Color and show date on hover on cell

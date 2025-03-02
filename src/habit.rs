@@ -1,4 +1,5 @@
 use crate::utils;
+use chrono::Weekday;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::{fmt, str::FromStr};
@@ -173,6 +174,20 @@ impl TryFrom<u8> for Day {
                 "Cannot get a `Day` from `u8` value given, {}",
                 value
             )),
+        }
+    }
+}
+
+impl From<Weekday> for Day {
+    fn from(value: Weekday) -> Self {
+        match value {
+            Weekday::Mon => Day::Monday,
+            Weekday::Tue => Day::Tuesday,
+            Weekday::Wed => Day::Wednesday,
+            Weekday::Thu => Day::Thursday,
+            Weekday::Fri => Day::Friday,
+            Weekday::Sat => Day::Saturday,
+            Weekday::Sun => Day::Sunday,
         }
     }
 }

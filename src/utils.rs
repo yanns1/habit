@@ -1,5 +1,5 @@
 use crate::habit::Day;
-use chrono::{DateTime, Datelike, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Local, TimeZone};
 
 pub fn left_pad(s: &str, c: char, n: usize) -> String {
     if n <= s.len() {
@@ -36,8 +36,8 @@ pub fn display_days(days: &[Day]) -> String {
     res
 }
 
-pub fn nth_day_of_year(datetime: &DateTime<Utc>) -> u16 {
-    let first_day_of_year = Utc
+pub fn nth_day_of_year(datetime: &DateTime<Local>) -> u16 {
+    let first_day_of_year = Local
         .with_ymd_and_hms(datetime.year(), 1, 1, 0, 0, 0)
         .unwrap();
 

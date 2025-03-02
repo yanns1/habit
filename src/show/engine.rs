@@ -1,4 +1,4 @@
-use super::{viz::BowlOfMarbles, viz::HeatMap, viz::ProgressVisualizer};
+use super::{viz::BowlOfMarbles, viz::HeatMap, viz::Visualizer};
 use crate::db;
 use crate::engine::Engine;
 use crate::habit::Habit;
@@ -76,21 +76,26 @@ impl Engine for ShowEngine {
     }
 }
 
-#[derive(Debug)]
 struct App {
-    tabs: Vec<String>,
-    visualizers: Vec<ProgressVisualizer>,
-    selected_tab_idx: usize,
     habits: Vec<Habit>,
     habit_names: Vec<String>,
-    selected_habit_idx: usize,
     habit_list_state: ListState,
+    selected_habit_idx: usize,
+
+    tabs: [String; 2],
+    selected_tab_idx: usize,
+    visualizers: [Visualizer; 2],
+    heatmap: HeatMap,
+    bowl_of_marbles: BowlOfMarbles,
+
     key_event: Option<KeyEvent>,
     exit: bool,
 }
 
 impl App {
     fn build(habits: Vec<Habit>, selected_habit_idx: usize) -> anyhow::Result<Self> {
+        debug_assert!((0..habits.len()).contains(&selected_habit_idx));
+
         let habit_names = habits
             .iter()
             .map(|h| h.name.clone())
@@ -99,17 +104,24 @@ impl App {
         let mut habit_list_state = ListState::default();
         habit_list_state.select(Some(selected_habit_idx));
 
+        let mut heatmap = HeatMap::new();
+        heatmap.update_for_habit(&habits[selected_habit_idx])?;
+
+        let bowl_of_marbles = BowlOfMarbles::new();
+        // bowl_of_marbles.update_for_habit(&habits[selected_habit_idx]);
+
         Ok(App {
-            tabs: vec!["Heatmap".to_string(), "Bowl of marbles".to_string()],
-            visualizers: vec![
-                ProgressVisualizer::HeatMap,
-                ProgressVisualizer::BowlOfMarbles,
-            ],
-            selected_tab_idx: 0,
             habits,
             habit_names,
-            selected_habit_idx,
             habit_list_state,
+            selected_habit_idx,
+
+            tabs: ["Heatmap".to_string(), "Bowl of marbles".to_string()],
+            selected_tab_idx: 0,
+            visualizers: [Visualizer::HeatMap, Visualizer::BowlOfMarbles],
+            heatmap,
+            bowl_of_marbles,
+
             key_event: None,
             exit: false,
         })
@@ -125,7 +137,7 @@ impl App {
     }
 
     fn render_frame(&mut self, frame: &mut Frame) {
-        frame.render_widget(self, frame.size())
+        frame.render_widget(self, frame.area())
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -161,12 +173,20 @@ impl App {
         }
     }
 
-    fn next_viz(&mut self) {
-        self.selected_tab_idx = (self.selected_tab_idx + 1) % self.tabs.len();
-    }
+    fn update_selected_vizualizer_for_selected_habit(&mut self) -> anyhow::Result<()> {
+        debug_assert!((0..self.visualizers.len()).contains(&self.selected_tab_idx));
+        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+        match self.visualizers[self.selected_tab_idx] {
+            Visualizer::HeatMap => {
+                self.heatmap
+                    .update_for_habit(&self.habits[self.selected_habit_idx])?;
+            }
+            Visualizer::BowlOfMarbles => {
+                // self.bowl_of_marbles.update_for_habit(&self.habits[self.selected_habit_idx])
+            }
+        };
 
-    fn prev_viz(&mut self) {
-        self.selected_tab_idx = (self.tabs.len() + self.selected_tab_idx - 1) % self.tabs.len();
+        Ok(())
     }
 
     fn exit(&mut self) {
@@ -177,7 +197,8 @@ impl App {
 impl Widget for &mut App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Layout
-        // ^^^^^^
+        // ------
+
         let [tabs_area, rest] = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Fill(1)])
@@ -188,9 +209,9 @@ impl Widget for &mut App {
             .constraints([Constraint::Length(10), Constraint::Fill(1)])
             .areas(rest);
 
-        // Change app state depending on received events
-        // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        // Update habit list state depending on key event
+        // Keyboard input
+        // --------------
+
         if let Some(key_event) = self.key_event {
             if key_event.kind == KeyEventKind::Press {
                 match key_event.code {
@@ -211,16 +232,31 @@ impl Widget for &mut App {
                             .habit_list_state
                             .selected()
                             .expect("There should always be a habit selected.");
+                        // TODO: Rethink error handling.
+                        self.update_selected_vizualizer_for_selected_habit()
+                            .unwrap();
                     }
-                    KeyCode::Tab => self.next_viz(),
-                    KeyCode::BackTab => self.prev_viz(),
+                    KeyCode::Tab => {
+                        // Change to next visualizer.
+                        self.selected_tab_idx = (self.selected_tab_idx + 1) % self.tabs.len();
+                        self.update_selected_vizualizer_for_selected_habit()
+                            .unwrap();
+                    }
+                    KeyCode::BackTab => {
+                        // Change to previous visualizer.
+                        self.selected_tab_idx =
+                            (self.tabs.len() + self.selected_tab_idx - 1) % self.tabs.len();
+                        self.update_selected_vizualizer_for_selected_habit()
+                            .unwrap();
+                    }
                     _ => {}
                 }
             }
         }
 
         // Widgets
-        // ^^^^^^^
+        // -------
+
         // Tabs
         let tabs_block = Block::bordered().title("Visualizations");
         let tabs = Tabs::new(self.tabs.clone())
@@ -250,18 +286,15 @@ impl Widget for &mut App {
             .highlight_spacing(HighlightSpacing::Always);
 
         // Rendering
-        // ^^^^^^^^^
+        // ---------
+
         tabs.render(tabs_area, buf);
         StatefulWidget::render(habit_list, habit_list_area, buf, &mut self.habit_list_state);
 
-        // selected_habit_idx should always be within the bounds of habits
-        let selected_habit = &self.habits[self.selected_habit_idx];
-        // selected_tab_idx should always be within the bounds of visualizers
+        debug_assert!((0..self.visualizers.len()).contains(&self.selected_tab_idx));
         match self.visualizers[self.selected_tab_idx] {
-            ProgressVisualizer::HeatMap => HeatMap::new(selected_habit).render(viz_area, buf),
-            ProgressVisualizer::BowlOfMarbles => {
-                BowlOfMarbles::new(selected_habit).render(viz_area, buf)
-            }
+            Visualizer::HeatMap => self.heatmap.render(viz_area, buf),
+            Visualizer::BowlOfMarbles => self.bowl_of_marbles.render(viz_area, buf),
         }
 
         // // Show current number of logged reps
