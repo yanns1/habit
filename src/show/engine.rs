@@ -4,27 +4,19 @@ use crate::engine::Engine;
 use crate::habit::Habit;
 use crate::show::cli::ShowCli;
 use crate::tui;
+use crate::utils;
 use anyhow::anyhow;
-use ratatui::buffer::Buffer;
-use ratatui::crossterm::event::KeyEvent;
-use ratatui::layout::Direction;
-use ratatui::layout::Layout;
-use ratatui::layout::Rect;
-use ratatui::prelude::Constraint;
-use ratatui::style::Color;
-use ratatui::style::Modifier;
-use ratatui::style::Style;
-use ratatui::widgets::Block;
-use ratatui::widgets::HighlightSpacing;
-use ratatui::widgets::List;
-use ratatui::widgets::ListItem;
-use ratatui::widgets::ListState;
-use ratatui::widgets::StatefulWidget;
-use ratatui::widgets::Tabs;
 use ratatui::{
-    crossterm::event::{self, KeyCode, KeyEventKind},
-    style::Stylize,
-    widgets::Widget,
+    buffer::Buffer,
+    crossterm::event::{self, KeyCode, KeyEvent, KeyEventKind},
+    layout::{Direction, Layout, Rect},
+    prelude::Constraint,
+    style::{Color, Modifier, Style, Stylize},
+    text::Line,
+    widgets::{
+        Block, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget, Tabs,
+        Widget, Wrap,
+    },
     Frame,
 };
 use std::io;
@@ -175,14 +167,16 @@ impl App {
 
     fn update_selected_vizualizer_for_selected_habit(&mut self) -> anyhow::Result<()> {
         debug_assert!((0..self.visualizers.len()).contains(&self.selected_tab_idx));
+        let selected_visualizer = self.visualizers[self.selected_tab_idx];
         debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-        match self.visualizers[self.selected_tab_idx] {
+        let selected_habit = &self.habits[self.selected_habit_idx];
+
+        match selected_visualizer {
             Visualizer::HeatMap => {
-                self.heatmap
-                    .update_for_habit(&self.habits[self.selected_habit_idx])?;
+                self.heatmap.update_for_habit(selected_habit)?;
             }
             Visualizer::BowlOfMarbles => {
-                // self.bowl_of_marbles.update_for_habit(&self.habits[self.selected_habit_idx])
+                // self.bowl_of_marbles.update_for_habit(selected_habit)
             }
         };
 
@@ -196,19 +190,6 @@ impl App {
 
 impl Widget for &mut App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        // Layout
-        // ------
-
-        let [tabs_area, rest] = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Fill(1)])
-            .areas(area);
-
-        let [habit_list_area, viz_area] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(10), Constraint::Fill(1)])
-            .areas(rest);
-
         // Keyboard input
         // --------------
 
@@ -254,6 +235,33 @@ impl Widget for &mut App {
             }
         }
 
+        // Layout
+        // ------
+
+        let [tabs_area, rest] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Fill(1)])
+            .areas(area);
+
+        let [habit_list_area, rest] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(10), Constraint::Fill(1)])
+            .areas(rest);
+
+        let [habit_desc_area, viz_area] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(15), Constraint::Fill(1)])
+            .areas(rest);
+
+        let [_, habit_desc_area, _] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Percentage(80),
+                Constraint::Fill(1),
+            ])
+            .areas(habit_desc_area);
+
         // Widgets
         // -------
 
@@ -264,6 +272,27 @@ impl Widget for &mut App {
             .style(Style::default().white())
             .highlight_style(PRIMARY_COLOR)
             .select(self.selected_tab_idx);
+
+        // Habit description
+        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+        let selected_habit = &self.habits[self.selected_habit_idx];
+        let mut habit_desc = vec![];
+        for line in textwrap::wrap(&selected_habit.description, habit_desc_area.width as usize) {
+            habit_desc.push(Line::from(line.to_string()));
+        }
+        for _ in 0..((habit_desc_area.height as usize) - habit_desc.len() - 3) {
+            habit_desc.push(Line::from(""));
+        }
+        habit_desc.push(Line::from(format!(
+            "> Each {} at {}.",
+            utils::display_days(&selected_habit.days),
+            selected_habit.at
+        )));
+
+        let habit_desc_para = Paragraph::new(habit_desc)
+            .block(Block::bordered().title("Habit details"))
+            .style(Style::new().white().on_black())
+            .wrap(Wrap { trim: true });
 
         // Habit list
         let habit_list_block = Block::bordered().title("Habits");
@@ -289,10 +318,12 @@ impl Widget for &mut App {
         // ---------
 
         tabs.render(tabs_area, buf);
+        habit_desc_para.render(habit_desc_area, buf);
         StatefulWidget::render(habit_list, habit_list_area, buf, &mut self.habit_list_state);
 
         debug_assert!((0..self.visualizers.len()).contains(&self.selected_tab_idx));
-        match self.visualizers[self.selected_tab_idx] {
+        let selected_visualizer = self.visualizers[self.selected_tab_idx];
+        match selected_visualizer {
             Visualizer::HeatMap => self.heatmap.render(viz_area, buf),
             Visualizer::BowlOfMarbles => self.bowl_of_marbles.render(viz_area, buf),
         }
