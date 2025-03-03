@@ -3,7 +3,7 @@ use crate::habit::{At, Day, Habit};
 use crate::DB_PATH;
 use anyhow::anyhow;
 use anyhow::Context;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, TimeZone};
 use rusqlite::Connection;
 
 pub fn open_db() -> anyhow::Result<Connection> {
@@ -403,15 +403,24 @@ pub fn get_n_logs_for_habit(conn: &Connection, habit_name: &str) -> anyhow::Resu
     })
 }
 
-pub fn habit_get_logs(conn: &Connection, habit_name: &str) -> anyhow::Result<Vec<DateTime<Local>>> {
+pub fn habit_get_logs_for_year(
+    conn: &Connection,
+    habit_name: &str,
+    year: i32,
+) -> anyhow::Result<Vec<DateTime<Local>>> {
     let habit_id = habit_get_id_from_name(conn, habit_name)?;
 
+    let first_second_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
+    let last_second_of_year = Local.with_ymd_and_hms(year, 12, 31, 23, 59, 59).unwrap();
+
     let mut stmt = conn
-        .prepare("SELECT created_at FROM Log WHERE habit_id = ?1")
+        .prepare(
+            "SELECT created_at FROM Log WHERE habit_id = ?1 AND (created_at BETWEEN ?2 AND ?3)",
+        )
         .with_context(|| "Failed to prepare statement in `get_logs_for_habit`.")?;
 
     let rows = stmt
-        .query_map(rusqlite::params![habit_id], |row| {
+        .query_map(rusqlite::params![habit_id, first_second_of_year.timestamp(), last_second_of_year.timestamp()], |row| {
             let timestamp = row.get::<_, i64>(0)?;
             let datetime = DateTime::from_timestamp(timestamp, 0).expect("Timestamp stored in database should be that returned by DateTime::timestamp, unchanged.").with_timezone(&Local);
             Ok(datetime)

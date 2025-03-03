@@ -97,7 +97,7 @@ impl App {
         habit_list_state.select(Some(selected_habit_idx));
 
         let mut heatmap = HeatMap::new();
-        heatmap.update_for_habit(&habits[selected_habit_idx])?;
+        heatmap.update_to_habit(&habits[selected_habit_idx])?;
 
         let bowl_of_marbles = BowlOfMarbles::new();
         // bowl_of_marbles.update_for_habit(&habits[selected_habit_idx]);
@@ -173,7 +173,7 @@ impl App {
 
         match selected_visualizer {
             Visualizer::HeatMap => {
-                self.heatmap.update_for_habit(selected_habit)?;
+                self.heatmap.update_to_habit(selected_habit)?;
             }
             Visualizer::BowlOfMarbles => {
                 // self.bowl_of_marbles.update_for_habit(selected_habit)
@@ -207,6 +207,30 @@ impl Widget for &mut App {
                     }
                     KeyCode::Char('G') | KeyCode::End => {
                         self.habit_list_state.select_last();
+                    }
+                    KeyCode::Char('h') | KeyCode::Left => {
+                        if self.visualizers[self.selected_tab_idx] == Visualizer::HeatMap {
+                            debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                            self.heatmap
+                                .update_to_prev_year(&self.habits[self.selected_habit_idx])
+                                .unwrap();
+                        }
+                    }
+                    KeyCode::Char('l') | KeyCode::Right => {
+                        if self.visualizers[self.selected_tab_idx] == Visualizer::HeatMap {
+                            debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                            self.heatmap
+                                .update_to_next_year(&self.habits[self.selected_habit_idx])
+                                .unwrap();
+                        }
+                    }
+                    KeyCode::Char('o') => {
+                        if self.visualizers[self.selected_tab_idx] == Visualizer::HeatMap {
+                            debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                            self.heatmap
+                                .update_to_cur_year(&self.habits[self.selected_habit_idx])
+                                .unwrap();
+                        }
                     }
                     KeyCode::Enter => {
                         self.selected_habit_idx = self
@@ -280,7 +304,10 @@ impl Widget for &mut App {
         for line in textwrap::wrap(&selected_habit.description, habit_desc_area.width as usize) {
             habit_desc.push(Line::from(line.to_string()));
         }
-        for _ in 0..((habit_desc_area.height as usize) - habit_desc.len() - 3) {
+        for _ in 0..(habit_desc_area.height as usize)
+            .saturating_sub(habit_desc.len())
+            .saturating_sub(3)
+        {
             habit_desc.push(Line::from(""));
         }
         habit_desc.push(Line::from(format!(

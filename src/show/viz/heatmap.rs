@@ -1,13 +1,14 @@
 use crate::db;
 use crate::habit::{Day, Habit};
 use crate::utils;
-use chrono::{Datelike, Local, TimeZone, Weekday};
+use chrono::{DateTime, Datelike, Local, TimeZone, Weekday};
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::prelude::{Buffer, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::Span;
 use ratatui::widgets::Widget;
 use rusqlite::Connection;
+use std::cmp::Ordering;
 
 const N_WEEKS_IN_YEAR: u16 = 53;
 const N_DAYS_IN_WEEK: u16 = 7;
@@ -15,8 +16,10 @@ const WIDTH_FOR_DAY: u16 = 3;
 const HEIGHT_FOR_DAY: u16 = 2;
 const WIDTH_FOR_DAY_NAME: u16 = 3;
 const HEIGHT_FOR_DAY_NAME: u16 = 2;
-const WIDTH_FOR_NAV: u16 = 9;
+const WIDTH_FOR_NAV: u16 = 13;
 const HEIGHT_FOR_NAV: u16 = 1;
+const WIDTH_FOR_YEAR: u16 = 4;
+const HEIGHT_FOR_YEAR: u16 = 1;
 
 #[derive(Debug, Clone, Copy)]
 /// The "type" of a day, as we are concerned about when we need to know
@@ -38,19 +41,72 @@ pub struct HeatMap {
 
     days_mat: Vec<DayType>,
 
+    today: DateTime<Local>,
+    today_year: i32,
+
+    // TODO(yann): We may not want to keep state for the year, instead let the App manage
+    // the year, as it could be used for all visualizations.
+    // Or maybe we want each visualizer to have its year...
+    year: i32,
     start_idx: usize,
     today_idx: usize,
+    end_idx: usize,
 }
 
 impl HeatMap {
     pub fn new() -> Self {
         // Make a days matrix, a 7 by 53 matrix where each cell corresponds to a day of the year.
         // A cell contains the "type" of the day it corresponds to (see `DayType`).
-        let mut days_mat =
+        let days_mat =
             vec![DayType::NotInYear; (N_WEEKS_IN_YEAR as usize) * (N_DAYS_IN_WEEK as usize)];
-
         let today = Local::now();
-        let year = today.year();
+        let today_year = today.year();
+
+        let mut heatmap = HeatMap {
+            conn: None,
+
+            days_mat,
+
+            today,
+            today_year,
+
+            year: today_year,
+            start_idx: 0,
+            today_idx: 0,
+            end_idx: 0,
+        };
+
+        heatmap.update_days_mat_to_year(today_year);
+
+        heatmap
+    }
+
+    pub fn update_to_habit_and_year(&mut self, habit: &Habit, year: i32) -> anyhow::Result<()> {
+        self.update_days_mat_to_year(year);
+        self.update_days_mat_to_habit(habit)
+    }
+
+    pub fn update_to_cur_year(&mut self, habit: &Habit) -> anyhow::Result<()> {
+        if self.year == self.today_year {
+            return Ok(());
+        }
+
+        self.update_to_habit_and_year(habit, self.today_year)
+    }
+
+    pub fn update_to_next_year(&mut self, habit: &Habit) -> anyhow::Result<()> {
+        self.update_to_habit_and_year(habit, self.year + 1)
+    }
+
+    pub fn update_to_prev_year(&mut self, habit: &Habit) -> anyhow::Result<()> {
+        self.update_to_habit_and_year(habit, self.year - 1)
+    }
+
+    pub fn update_to_habit(&mut self, habit: &Habit) -> anyhow::Result<()> {
+        self.update_days_mat_to_habit(habit)
+    }
+
+    fn update_days_mat_to_year(&mut self, year: i32) {
         let first_day_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
         let first_weekday_of_year = first_day_of_year.weekday();
         let last_day_of_year = Local.with_ymd_and_hms(year, 12, 31, 0, 0, 0).unwrap();
@@ -59,50 +115,66 @@ impl HeatMap {
         // Set all days in previous year to `DayType::NotInYear`.
         let mut start_idx = 0;
         while Weekday::try_from((start_idx % 7) as u8).unwrap() != first_weekday_of_year {
-            days_mat[start_idx] = DayType::NotInYear;
+            self.days_mat[start_idx] = DayType::NotInYear;
             start_idx += 1;
         }
 
         // Set all days in next year to `DayType::NotInYear`.
-        let mut end_idx = days_mat.capacity() - 1;
+        let mut end_idx = self.days_mat.capacity() - 1;
         while Weekday::try_from((end_idx % 7) as u8).unwrap() != last_weekday_of_year {
-            days_mat[end_idx] = DayType::NotInYear;
+            self.days_mat[end_idx] = DayType::NotInYear;
             end_idx -= 1;
         }
 
         // For all days after today, set to `DayType::ToCome`.
-        let today_idx = start_idx + (utils::nth_day_of_year(&today) as usize) - 1;
-        for d in days_mat[(today_idx + 1)..(end_idx + 1)].iter_mut() {
-            *d = DayType::ToCome;
+        match year.cmp(&self.today_year) {
+            Ordering::Less => {}
+            Ordering::Equal => {
+                let today_idx = start_idx + (utils::nth_day_of_year(&self.today) as usize) - 1;
+                for d in self.days_mat[(today_idx + 1)..(end_idx + 1)].iter_mut() {
+                    *d = DayType::ToCome;
+                }
+
+                self.today_idx = today_idx;
+            }
+            Ordering::Greater => {
+                for d in self.days_mat[(start_idx)..(end_idx + 1)].iter_mut() {
+                    *d = DayType::ToCome;
+                }
+            }
         }
 
-        HeatMap {
-            conn: None,
-            days_mat,
-            start_idx,
-            today_idx,
+        self.year = year;
+        self.start_idx = start_idx;
+        self.end_idx = end_idx;
+    }
+
+    /// Should be called _after_ `update_days_mat_to_year` has been called, otherwise
+    /// fields will not be properly set.
+    fn update_days_mat_to_habit(&mut self, habit: &Habit) -> anyhow::Result<()> {
+        if self.year > self.today_year {
+            return Ok(());
         }
-    }
 
-    pub fn update_for_habit(&mut self, habit: &Habit) -> anyhow::Result<()> {
-        self.update_days_mat(habit)
-    }
-
-    fn update_days_mat(&mut self, habit: &Habit) -> anyhow::Result<()> {
         if self.conn.is_none() {
             self.conn = Some(db::open_db()?);
         }
         let conn = self.conn.as_ref().unwrap();
 
-        let log_datetimes = db::habit_get_logs(conn, &habit.name)?;
+        let log_datetimes = db::habit_get_logs_for_year(conn, &habit.name, self.year)?;
         let mut log_offsets = log_datetimes
             .iter()
             .map(|datetime| self.start_idx + (utils::nth_day_of_year(datetime) as usize) - 1)
             .collect::<Vec<usize>>();
         log_offsets.sort();
+
         let mut log_offset_idx: usize = 0;
         let mut weekday = Weekday::try_from((self.start_idx % 7) as u8).unwrap();
-        for i in self.start_idx..self.today_idx + 1 {
+        let mut end_idx = self.end_idx;
+        if self.year == self.today_year {
+            end_idx = self.today_idx;
+        }
+        for i in self.start_idx..end_idx + 1 {
             self.days_mat[i] = if habit.days.contains(&Day::from(weekday)) {
                 if let Some(&offset) = log_offsets.get(log_offset_idx) {
                     if offset < i {
@@ -143,15 +215,25 @@ impl Default for HeatMap {
 impl Widget for &mut HeatMap {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Layout
-        let [_, days_rect, nav_rect, _] = Layout::default()
+        let [_, year_rect, _, days_rect, nav_rect, _] = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Fill(1),
+                Constraint::Length(HEIGHT_FOR_YEAR),
+                Constraint::Length(1),
                 Constraint::Length(HEIGHT_FOR_DAY * N_DAYS_IN_WEEK),
                 Constraint::Length(HEIGHT_FOR_NAV),
                 Constraint::Fill(1),
             ])
             .areas(area);
+        let [_, year_rect, _] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Length(WIDTH_FOR_YEAR),
+                Constraint::Fill(1),
+            ])
+            .areas(year_rect);
         let [_, days_rect, _, days_mat_rect, _] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -178,6 +260,14 @@ impl Widget for &mut HeatMap {
         let on_dark_gray = Style::new().white().on_dark_gray();
         let on_light_green = Style::new().black().on_light_green();
         let on_light_red = Style::new().white().on_light_red();
+
+        // Render year
+        buf.set_span(
+            year_rect.x,
+            year_rect.y,
+            &Span::styled(self.year.to_string(), on_black),
+            WIDTH_FOR_YEAR,
+        );
 
         // Render day names
         buf.set_span(
@@ -238,19 +328,19 @@ impl Widget for &mut HeatMap {
                         on_dark_gray,
                     )),
                     DayType::ShouldNotHabit => Some(Span::styled(
-                        if i == self.today_idx {
+                        if self.year == self.today_year && i == self.today_idx {
                             "ty".to_string()
                         } else {
                             " ".repeat((WIDTH_FOR_DAY - 1) as usize)
                         },
-                        if i == self.today_idx {
+                        if self.year == self.today_year && i == self.today_idx {
                             on_dark_gray
                         } else {
                             on_gray
                         },
                     )),
                     DayType::ShouldHabit(true) => Some(Span::styled(
-                        if i == self.today_idx {
+                        if self.year == self.today_year && i == self.today_idx {
                             "ty".to_string()
                         } else {
                             " ".repeat((WIDTH_FOR_DAY - 1) as usize)
@@ -258,7 +348,7 @@ impl Widget for &mut HeatMap {
                         on_light_green,
                     )),
                     DayType::ShouldHabit(false) => Some(Span::styled(
-                        if i == self.today_idx {
+                        if self.year == self.today_year && i == self.today_idx {
                             "ty".to_string()
                         } else {
                             " ".repeat((WIDTH_FOR_DAY - 1) as usize)
@@ -279,12 +369,8 @@ impl Widget for &mut HeatMap {
         buf.set_span(
             nav_rect.x,
             nav_rect.y,
-            &Span::styled("< l | r >", on_black),
+            &Span::styled("< h | o | l >", on_black),
             WIDTH_FOR_NAV,
         );
-
-        // TODO: Make it stateful:
-        //  1. Color and show date on hover on cell
-        //  2. add events to paginate forward or backward
     }
 }

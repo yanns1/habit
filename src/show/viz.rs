@@ -4,7 +4,7 @@ mod heatmap;
 pub use bowl_of_marbles::BowlOfMarbles;
 pub use heatmap::HeatMap;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Visualizer {
     HeatMap,
     BowlOfMarbles,
