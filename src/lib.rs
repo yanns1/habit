@@ -25,12 +25,3 @@ pub static DATA_DIR_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
         .data_local_dir()
         .to_path_buf()
 });
-
-pub static DB_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
-    let mut db_path = ProjectDirs::from("", crate_name!(), crate_name!())
-        .unwrap()
-        .data_local_dir()
-        .to_path_buf();
-    db_path.push("habit.db");
-    db_path
-});

@@ -1,8 +1,10 @@
 use clap::Parser;
 use habit::cli::Cli;
-use habit::db;
-use habit::engine::get_engine;
-use habit::{DATA_DIR_PATH, DB_PATH};
+use habit::{
+    db::{self, DB_PATH},
+    engine::get_engine,
+    DATA_DIR_PATH,
+};
 use std::fs;
 
 fn main() -> anyhow::Result<()> {

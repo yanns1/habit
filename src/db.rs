@@ -1,10 +1,22 @@
 use crate::habit;
 use crate::habit::{At, Day, Habit};
-use crate::DB_PATH;
 use anyhow::anyhow;
 use anyhow::Context;
 use chrono::{DateTime, Local, TimeZone};
+use clap::crate_name;
+use directories::ProjectDirs;
 use rusqlite::Connection;
+use std::path::PathBuf;
+use std::sync::LazyLock;
+
+pub static DB_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
+    let mut db_path = ProjectDirs::from("", crate_name!(), crate_name!())
+        .unwrap()
+        .data_local_dir()
+        .to_path_buf();
+    db_path.push("habit.db");
+    db_path
+});
 
 pub fn open_db() -> anyhow::Result<Connection> {
     Connection::open(DB_PATH.clone()).with_context(|| {
