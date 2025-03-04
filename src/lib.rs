@@ -20,7 +20,7 @@ use lazy_static::lazy_static;
 use std::path::PathBuf;
 
 lazy_static! {
-    pub static ref DATA_DIR: PathBuf = ProjectDirs::from("", crate_name!(), crate_name!())
+    pub static ref DATA_DIR_PATH: PathBuf = ProjectDirs::from("", crate_name!(), crate_name!())
         .unwrap()
         .data_local_dir()
         .to_path_buf();
