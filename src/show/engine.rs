@@ -14,7 +14,8 @@ use ratatui::{
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{
-        Block, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget, Widget, Wrap,
+        Block, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget,
+        Widget, Wrap,
     },
     Frame,
 };
@@ -72,6 +73,7 @@ struct App {
     conn: Connection,
     key_event: Option<KeyEvent>,
     exit: bool,
+    show_help_dialog: bool,
 
     heatmap: HeatMap,
 
@@ -102,6 +104,7 @@ impl App {
             conn,
             key_event: None,
             exit: false,
+            show_help_dialog: false,
 
             heatmap,
 
@@ -209,6 +212,9 @@ impl Widget for &mut App {
                         self.heatmap
                             .update_to_habit(&self.habits[self.selected_habit_idx])
                             .unwrap();
+                    }
+                    KeyCode::Char('?') => {
+                        self.show_help_dialog = !self.show_help_dialog;
                     }
                     _ => {}
                 }
@@ -333,5 +339,47 @@ impl Widget for &mut App {
         StatefulWidget::render(habit_list, habit_list_area, buf, &mut self.habit_list_state);
         self.heatmap.render(heatmap_area, buf);
         summary_para.render(summary_area, buf);
+
+        if self.show_help_dialog {
+            let [_, help_area, _] = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Fill(1),
+                    Constraint::Percentage(40),
+                    Constraint::Fill(1),
+                ])
+                .areas(area);
+            let [_, help_area, _] = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Fill(1),
+                    Constraint::Percentage(50),
+                    Constraint::Fill(1),
+                ])
+                .areas(help_area);
+
+            let help_lines = vec![
+                Line::from(
+                    "Press: 'q'     to quit                       '?'   to toggle this help dialog",
+                ),
+                Line::from(
+                    "       'j'     to select next habit          'k'   to select previous habit",
+                ),
+                Line::from(
+                    "       'g'     to select first habit         'G'   to select last habit",
+                ),
+                Line::from("       'Enter' to confirm habit selection"),
+                Line::from("       'h'     to show previous year         'l'   to show next year"),
+                Line::from("       'o'     to go back to current year."),
+            ];
+            let help_para = Paragraph::new(help_lines)
+                .block(Block::bordered().title("Help"))
+                .wrap(Wrap { trim: false });
+
+            // Clear the help area first.
+            let clear = Clear;
+            clear.render(help_area, buf);
+            help_para.render(help_area, buf);
+        }
     }
 }
