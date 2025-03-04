@@ -6,20 +6,17 @@ use anyhow::Context;
 use dialoguer::Confirm;
 use dialoguer::MultiSelect;
 use dialoguer::{theme::ColorfulTheme, Input};
-use lazy_static::lazy_static;
 use std::str::FromStr;
 
-lazy_static! {
-    static ref DAYS: [Day; 7] = [
-        Day::Monday,
-        Day::Tuesday,
-        Day::Wednesday,
-        Day::Thursday,
-        Day::Friday,
-        Day::Saturday,
-        Day::Sunday,
-    ];
-}
+const DAYS: [Day; 7] = [
+    Day::Monday,
+    Day::Tuesday,
+    Day::Wednesday,
+    Day::Thursday,
+    Day::Friday,
+    Day::Saturday,
+    Day::Sunday,
+];
 
 pub fn prompt_habit_name() -> anyhow::Result<String> {
     let conn = db::open_db()?;

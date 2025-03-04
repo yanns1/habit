@@ -1,12 +1,11 @@
 use crate::utils;
 use chrono::Weekday;
-use lazy_static::lazy_static;
 use regex::Regex;
+use std::sync::LazyLock;
 use std::{fmt, str::FromStr};
 
-lazy_static! {
-    static ref AT_RE: Regex = Regex::new(r"(?<hour>\d\d):(?<minutes>\d\d)").unwrap();
-}
+pub static AT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?<hour>\d\d):(?<minutes>\d\d)").unwrap());
 
 // Habit
 // -----
