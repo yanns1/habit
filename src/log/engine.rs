@@ -30,7 +30,7 @@ impl Engine for LogEngine {
         // Log a rep.
         db::log_insert(&conn, &self.habit)?;
 
-        let n_reps = db::get_n_logs_for_habit(&conn, &self.habit)?;
+        let n_reps = db::habit_get_n_logs(&conn, &self.habit)?;
         println!("Rep successfully logged.");
         println!(
             "Good job! You are at {} for habit '{}'.",

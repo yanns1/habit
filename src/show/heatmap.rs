@@ -2,11 +2,13 @@ use crate::db;
 use crate::habit::{Day, Habit};
 use crate::utils;
 use chrono::{DateTime, Datelike, Local, TimeZone, Weekday};
-use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::prelude::{Buffer, Rect};
-use ratatui::style::{Style, Stylize};
-use ratatui::text::Span;
-use ratatui::widgets::Widget;
+use ratatui::{
+    layout::{Constraint, Direction, Layout},
+    prelude::{Buffer, Rect},
+    style::{Style, Stylize},
+    text::Span,
+    widgets::Widget,
+};
 use rusqlite::Connection;
 use std::cmp::Ordering;
 
@@ -79,6 +81,10 @@ impl HeatMap {
         heatmap.update_days_mat_to_year(today_year);
 
         heatmap
+    }
+
+    pub fn get_year(&self) -> i32 {
+        self.year
     }
 
     pub fn update_to_habit_and_year(&mut self, habit: &Habit, year: i32) -> anyhow::Result<()> {

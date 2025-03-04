@@ -1,4 +1,4 @@
-use super::{viz::BowlOfMarbles, viz::HeatMap, viz::Visualizer};
+use super::heatmap::HeatMap;
 use crate::db;
 use crate::engine::Engine;
 use crate::habit::Habit;
@@ -12,13 +12,13 @@ use ratatui::{
     layout::{Direction, Layout, Rect},
     prelude::Constraint,
     style::{Color, Modifier, Style, Stylize},
-    text::Line,
+    text::{Line, Span},
     widgets::{
-        Block, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget, Tabs,
-        Widget, Wrap,
+        Block, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget, Widget, Wrap,
     },
     Frame,
 };
+use rusqlite::Connection;
 use std::io;
 
 const PRIMARY_COLOR: Color = Color::LightBlue;
@@ -69,24 +69,23 @@ impl Engine for ShowEngine {
 }
 
 struct App {
+    conn: Connection,
+    key_event: Option<KeyEvent>,
+    exit: bool,
+
+    heatmap: HeatMap,
+
     habits: Vec<Habit>,
     habit_names: Vec<String>,
     habit_list_state: ListState,
     selected_habit_idx: usize,
-
-    tabs: [String; 2],
-    selected_tab_idx: usize,
-    visualizers: [Visualizer; 2],
-    heatmap: HeatMap,
-    bowl_of_marbles: BowlOfMarbles,
-
-    key_event: Option<KeyEvent>,
-    exit: bool,
 }
 
 impl App {
     fn build(habits: Vec<Habit>, selected_habit_idx: usize) -> anyhow::Result<Self> {
         debug_assert!((0..habits.len()).contains(&selected_habit_idx));
+
+        let conn = db::open_db()?;
 
         let habit_names = habits
             .iter()
@@ -99,23 +98,17 @@ impl App {
         let mut heatmap = HeatMap::new();
         heatmap.update_to_habit(&habits[selected_habit_idx])?;
 
-        let bowl_of_marbles = BowlOfMarbles::new();
-        // bowl_of_marbles.update_for_habit(&habits[selected_habit_idx]);
-
         Ok(App {
+            conn,
+            key_event: None,
+            exit: false,
+
+            heatmap,
+
             habits,
             habit_names,
             habit_list_state,
             selected_habit_idx,
-
-            tabs: ["Heatmap".to_string(), "Bowl of marbles".to_string()],
-            selected_tab_idx: 0,
-            visualizers: [Visualizer::HeatMap, Visualizer::BowlOfMarbles],
-            heatmap,
-            bowl_of_marbles,
-
-            key_event: None,
-            exit: false,
         })
     }
 
@@ -165,24 +158,6 @@ impl App {
         }
     }
 
-    fn update_selected_vizualizer_for_selected_habit(&mut self) -> anyhow::Result<()> {
-        debug_assert!((0..self.visualizers.len()).contains(&self.selected_tab_idx));
-        let selected_visualizer = self.visualizers[self.selected_tab_idx];
-        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-        let selected_habit = &self.habits[self.selected_habit_idx];
-
-        match selected_visualizer {
-            Visualizer::HeatMap => {
-                self.heatmap.update_to_habit(selected_habit)?;
-            }
-            Visualizer::BowlOfMarbles => {
-                // self.bowl_of_marbles.update_for_habit(selected_habit)
-            }
-        };
-
-        Ok(())
-    }
-
     fn exit(&mut self) {
         self.exit = true;
     }
@@ -209,49 +184,30 @@ impl Widget for &mut App {
                         self.habit_list_state.select_last();
                     }
                     KeyCode::Char('h') | KeyCode::Left => {
-                        if self.visualizers[self.selected_tab_idx] == Visualizer::HeatMap {
-                            debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                            self.heatmap
-                                .update_to_prev_year(&self.habits[self.selected_habit_idx])
-                                .unwrap();
-                        }
+                        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                        self.heatmap
+                            .update_to_prev_year(&self.habits[self.selected_habit_idx])
+                            .unwrap();
                     }
                     KeyCode::Char('l') | KeyCode::Right => {
-                        if self.visualizers[self.selected_tab_idx] == Visualizer::HeatMap {
-                            debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                            self.heatmap
-                                .update_to_next_year(&self.habits[self.selected_habit_idx])
-                                .unwrap();
-                        }
+                        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                        self.heatmap
+                            .update_to_next_year(&self.habits[self.selected_habit_idx])
+                            .unwrap();
                     }
                     KeyCode::Char('o') => {
-                        if self.visualizers[self.selected_tab_idx] == Visualizer::HeatMap {
-                            debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                            self.heatmap
-                                .update_to_cur_year(&self.habits[self.selected_habit_idx])
-                                .unwrap();
-                        }
+                        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                        self.heatmap
+                            .update_to_cur_year(&self.habits[self.selected_habit_idx])
+                            .unwrap();
                     }
                     KeyCode::Enter => {
                         self.selected_habit_idx = self
                             .habit_list_state
                             .selected()
                             .expect("There should always be a habit selected.");
-                        // TODO: Rethink error handling.
-                        self.update_selected_vizualizer_for_selected_habit()
-                            .unwrap();
-                    }
-                    KeyCode::Tab => {
-                        // Change to next visualizer.
-                        self.selected_tab_idx = (self.selected_tab_idx + 1) % self.tabs.len();
-                        self.update_selected_vizualizer_for_selected_habit()
-                            .unwrap();
-                    }
-                    KeyCode::BackTab => {
-                        // Change to previous visualizer.
-                        self.selected_tab_idx =
-                            (self.tabs.len() + self.selected_tab_idx - 1) % self.tabs.len();
-                        self.update_selected_vizualizer_for_selected_habit()
+                        self.heatmap
+                            .update_to_habit(&self.habits[self.selected_habit_idx])
                             .unwrap();
                     }
                     _ => {}
@@ -259,52 +215,38 @@ impl Widget for &mut App {
             }
         }
 
+        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+        let selected_habit = &self.habits[self.selected_habit_idx];
+
         // Layout
         // ------
 
-        let [tabs_area, rest] = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Fill(1)])
-            .areas(area);
-
-        let [habit_list_area, rest] = Layout::default()
+        let [habit_list_area, habit_details_area] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(10), Constraint::Fill(1)])
-            .areas(rest);
+            .areas(area);
 
-        let [habit_desc_area, viz_area] = Layout::default()
+        let [habit_details_area, heatmap_area, summary_area] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(15), Constraint::Fill(1)])
-            .areas(rest);
-
-        let [_, habit_desc_area, _] = Layout::default()
-            .direction(Direction::Horizontal)
             .constraints([
+                Constraint::Percentage(15),
                 Constraint::Fill(1),
-                Constraint::Percentage(80),
-                Constraint::Fill(1),
+                Constraint::Percentage(10),
             ])
-            .areas(habit_desc_area);
+            .areas(habit_details_area);
 
         // Widgets
         // -------
 
-        // Tabs
-        let tabs_block = Block::bordered().title("Visualizations");
-        let tabs = Tabs::new(self.tabs.clone())
-            .block(tabs_block)
-            .style(Style::default().white())
-            .highlight_style(PRIMARY_COLOR)
-            .select(self.selected_tab_idx);
-
         // Habit description
-        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-        let selected_habit = &self.habits[self.selected_habit_idx];
         let mut habit_desc = vec![];
-        for line in textwrap::wrap(&selected_habit.description, habit_desc_area.width as usize) {
+        for line in textwrap::wrap(
+            &selected_habit.description,
+            habit_details_area.width as usize,
+        ) {
             habit_desc.push(Line::from(line.to_string()));
         }
-        for _ in 0..(habit_desc_area.height as usize)
+        for _ in 0..(habit_details_area.height as usize)
             .saturating_sub(habit_desc.len())
             .saturating_sub(3)
         {
@@ -341,27 +283,55 @@ impl Widget for &mut App {
             .highlight_symbol("> ")
             .highlight_spacing(HighlightSpacing::Always);
 
+        // Summary paragraph
+        let year = self.heatmap.get_year();
+        let n_reps_for_year =
+            db::habit_get_n_logs_for_year(&self.conn, &selected_habit.name, year).unwrap();
+        let n_reps_total = db::habit_get_n_logs(&self.conn, &selected_habit.name).unwrap();
+        let summary_lines = vec![
+            Line::from(vec![
+                Span::from(format!("In {}, you have completed ", year)),
+                Span::styled(
+                    format!(
+                        "{} {}",
+                        n_reps_for_year,
+                        if n_reps_for_year <= 1 { "rep" } else { "reps" }
+                    ),
+                    Style::new().bold(),
+                ),
+                Span::from(format!(
+                    " for habit '{}'. {}",
+                    selected_habit.name,
+                    if n_reps_for_year > 0 {
+                        "Congratulations!"
+                    } else {
+                        ""
+                    }
+                )),
+            ]),
+            Line::from(vec![
+                Span::from("Since the beginning, you have completed "),
+                Span::styled(
+                    format!(
+                        "{} {}",
+                        n_reps_total,
+                        if n_reps_total <= 1 { "rep" } else { "reps" }
+                    ),
+                    Style::new().bold(),
+                ),
+                Span::from("."),
+            ]),
+        ];
+        let summary_para = Paragraph::new(summary_lines)
+            .centered()
+            .wrap(Wrap { trim: true });
+
         // Rendering
         // ---------
 
-        tabs.render(tabs_area, buf);
-        habit_desc_para.render(habit_desc_area, buf);
+        habit_desc_para.render(habit_details_area, buf);
         StatefulWidget::render(habit_list, habit_list_area, buf, &mut self.habit_list_state);
-
-        debug_assert!((0..self.visualizers.len()).contains(&self.selected_tab_idx));
-        let selected_visualizer = self.visualizers[self.selected_tab_idx];
-        match selected_visualizer {
-            Visualizer::HeatMap => self.heatmap.render(viz_area, buf),
-            Visualizer::BowlOfMarbles => self.bowl_of_marbles.render(viz_area, buf),
-        }
-
-        // // Show current number of logged reps
-        // let n_reps = db::get_n_logs_for_habit(&conn, habit)?;
-        // println!(
-        //     "You accumulated {} for habit '{}'. {}",
-        //     format!("{} {}", n_reps, if n_reps <= 1 { "rep" } else { "reps" }).bold(),
-        //     habit,
-        //     if n_reps > 0 { "Congratulations!" } else { "" }
-        // );
+        self.heatmap.render(heatmap_area, buf);
+        summary_para.render(summary_area, buf);
     }
 }

@@ -387,12 +387,38 @@ pub fn log_insert(conn: &Connection, habit_name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-// TODO: rename to habit_get_n_logs
-pub fn get_n_logs_for_habit(conn: &Connection, habit_name: &str) -> anyhow::Result<usize> {
+pub fn habit_get_n_logs(conn: &Connection, habit_name: &str) -> anyhow::Result<usize> {
     let habit_id = habit_get_id_from_name(conn, habit_name)?;
     conn.query_row(
         "SELECT COUNT(1) FROM Log WHERE habit_id = ?1",
         rusqlite::params![habit_id],
+        |row| row.get::<_, usize>(0),
+    )
+    .with_context(|| {
+        format!(
+            "Failed to count number of logged reps for Habit '{}'.",
+            habit_name
+        )
+    })
+}
+
+pub fn habit_get_n_logs_for_year(
+    conn: &Connection,
+    habit_name: &str,
+    year: i32,
+) -> anyhow::Result<usize> {
+    let habit_id = habit_get_id_from_name(conn, habit_name)?;
+
+    let first_second_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
+    let last_second_of_year = Local.with_ymd_and_hms(year, 12, 31, 23, 59, 59).unwrap();
+
+    conn.query_row(
+        "SELECT COUNT(1) FROM Log WHERE habit_id = ?1 AND (created_at BETWEEN ?2 AND ?3)",
+        rusqlite::params![
+            habit_id,
+            first_second_of_year.timestamp(),
+            last_second_of_year.timestamp()
+        ],
         |row| row.get::<_, usize>(0),
     )
     .with_context(|| {
