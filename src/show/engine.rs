@@ -272,15 +272,21 @@ impl Widget for &mut App {
         }
         for _ in 0..(habit_details_area.height as usize)
             .saturating_sub(habit_desc.len())
-            .saturating_sub(3)
+            .saturating_sub(if selected_habit.suspended { 4 } else { 3 })
         {
             habit_desc.push(Line::from(""));
         }
-        habit_desc.push(Line::from(format!(
-            "> Each {} at {}.",
-            utils::display_days(&selected_habit.days),
-            selected_habit.at
-        )));
+        if selected_habit.suspended {
+            habit_desc.push(Line::from("(suspended)").style(Style::new().italic()))
+        }
+        habit_desc.push(Line::from(vec![
+            Span::from(">").style(Style::new().dark_gray()),
+            Span::from(format!(
+                " Each {} at {}.",
+                utils::display_days(&selected_habit.days),
+                selected_habit.at
+            )),
+        ]));
 
         let habit_desc_para = Paragraph::new(habit_desc)
             .block(Block::bordered().title("Habit details"))
