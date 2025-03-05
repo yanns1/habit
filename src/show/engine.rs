@@ -6,6 +6,8 @@ use crate::show::cli::ShowCli;
 use crate::tui;
 use crate::utils;
 use anyhow::anyhow;
+use r2d2::PooledConnection;
+use r2d2_sqlite::SqliteConnectionManager;
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, KeyCode, KeyEvent, KeyEventKind},
@@ -19,7 +21,6 @@ use ratatui::{
     },
     Frame,
 };
-use rusqlite::Connection;
 use std::io;
 
 const PRIMARY_COLOR: Color = Color::LightBlue;
@@ -35,7 +36,7 @@ struct ShowEngine {
 
 impl Engine for ShowEngine {
     fn run(&mut self) -> anyhow::Result<()> {
-        let conn = db::open_db()?;
+        let conn = db::get_conn!();
 
         // Check if habit exists in db, if not error.
         if let Some(ref habit_name) = self.habit {
@@ -61,7 +62,7 @@ impl Engine for ShowEngine {
 
         // Run the TUI.
         let mut terminal = tui::init()?;
-        let app_result = App::build(habits, init_habit_idx)?.run(&mut terminal);
+        let app_result = App::build(conn, habits, init_habit_idx)?.run(&mut terminal);
         tui::restore(&mut terminal)?;
         app_result?;
 
@@ -70,7 +71,8 @@ impl Engine for ShowEngine {
 }
 
 struct App {
-    conn: Connection,
+    conn: PooledConnection<SqliteConnectionManager>,
+
     key_event: Option<KeyEvent>,
     exit: bool,
     show_help_dialog: bool,
@@ -84,10 +86,12 @@ struct App {
 }
 
 impl App {
-    fn build(habits: Vec<Habit>, selected_habit_idx: usize) -> anyhow::Result<Self> {
+    fn build(
+        conn: PooledConnection<SqliteConnectionManager>,
+        habits: Vec<Habit>,
+        selected_habit_idx: usize,
+    ) -> anyhow::Result<Self> {
         debug_assert!((0..habits.len()).contains(&selected_habit_idx));
-
-        let conn = db::open_db()?;
 
         let habit_names = habits
             .iter()
@@ -102,6 +106,7 @@ impl App {
 
         Ok(App {
             conn,
+
             key_event: None,
             exit: false,
             show_help_dialog: false,

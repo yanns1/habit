@@ -1,23 +1,9 @@
 use clap::Parser;
 use habit::cli::Cli;
-use habit::{
-    db::{self, DB_PATH},
-    engine::get_engine,
-    DATA_DIR_PATH,
-};
-use std::fs;
+use habit::engine::get_engine;
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-
-    // Make directories
-    fs::create_dir_all(DATA_DIR_PATH.clone())?;
-
-    // Check if the DB exists. If not, create it.
-    if !DB_PATH.exists() {
-        let conn = db::open_db()?;
-        db::create_tables(&conn)?;
-    }
 
     // Run engine.
     let mut engine = get_engine(cli);

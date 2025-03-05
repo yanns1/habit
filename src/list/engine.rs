@@ -16,7 +16,7 @@ struct ListEngine {
 
 impl Engine for ListEngine {
     fn run(&mut self) -> anyhow::Result<()> {
-        let conn = db::open_db()?;
+        let conn = db::get_conn!();
 
         if self.verbose {
             let mut habits = db::habit_get_all(&conn)?;

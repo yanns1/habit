@@ -1,31 +1,145 @@
 use crate::habit;
 use crate::habit::{At, Day, Habit};
+use crate::paths::DB_PATH;
 use anyhow::anyhow;
 use anyhow::Context;
 use chrono::{DateTime, Local, TimeZone};
-use clap::crate_name;
-use directories::ProjectDirs;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
-use std::path::PathBuf;
 use std::sync::LazyLock;
 
-pub static DB_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
-    let mut db_path = ProjectDirs::from("", crate_name!(), crate_name!())
-        .unwrap()
-        .data_local_dir()
-        .to_path_buf();
-    db_path.push("habit.db");
-    db_path
+// # About database connection management
+//
+// The naive strategy is to create a connection each time one is needed.
+// However, it has two important downsides:
+//
+// 1. Connecting to the database can be costly, especially
+//    if communication with the database is done through the network.
+// 2. Creating connections in many different places clutters the code,
+//    and introduces that many failure points.
+//
+// Thus came to me the idea of making one global connection for the
+// entire app. In principle, there are multiple ways to make such global:
+//
+// 1. Use the `const` keyword in conjunction with `std::cell::LazyCell`.
+// 2. Use the `static` keyword in conjunction with `std::sync::LazyLock`.
+//
+// 1 compiles, but triggers a warning from clippy: a `const` item should
+// not be interior mutable. Indeed, the connection type of rusqlite,
+// `rusqlite::Connection`, makes use of the interior mutability pattern.
+// The documentation for this lint is as follows:
+//
+// > Consts are copied everywhere they are referenced, i.e., every time
+// > you refer to the const a fresh instance of the Cell or Mutex or
+// > AtomicXxxx will be created, which defeats the whole purpose of using
+// > these types in the first place.
+// >
+// > The const should better be replaced by a `static` item if a global
+// > variable is wanted, or replaced by a `const fn` if a constructor is wanted.
+//
+// So 1 does not work because `rusqlite::Connection` is interior mutable,
+// and `const` amounts to copying the `LazyCell` everywhere it is referenced,
+// which comes down to having one connection per reference.
+//
+// The lint suggests using `static`, which is point 2. We cannot use
+// `LazyCell` with `static`, because `static`s are required to by `Sync`.
+// The [documentation](https://doc.rust-lang.org/std/keyword.static.html)
+// explains that `static`s are required to be `Sync`, because they are
+// expected to always be safe to read. They are unsafe to write, however,
+// an unsafe block is required to do so. See the documentation of `static`
+// and `const` to see the differences, as well as
+// <https://doc.rust-lang.org/reference/items/static-items.html#r-items.static.alternate>.
+//
+// We can use the thread-safe version of `LazyCell`: `std::sync::LazyLock`.
+// However, it still does not work, because, `LazyLock` requires it containing
+// value to be `Sync` as well, which `rusqlite::Connection` is not.
+// `rusqlite::Connection` is `Send`, however. There has been discussion on
+// why `rusqlite::Connection` is `Send` but not `Sync`:
+//
+// - <https://github.com/rusqlite/rusqlite/issues/188#issuecomment-787390455>
+// - <https://github.com/rusqlite/rusqlite/issues/342#issuecomment-592662942>
+// - <https://github.com/rusqlite/rusqlite/discussions/1226>
+//
+// The lint also suggests using `const fn`, which are functions that are
+// permitted to be called in place of a `const` expression. When used
+// in a `const` context, the function is executed at compile time, in
+// the host (and not user) environment (see
+// <https://doc.rust-lang.org/reference/const_eval.html#const-functions>).
+// The creation of the database connection cannot happen in a `const fn`,
+// because `Connection::open` is not `const`, the path of the database
+// file is determined at runtime, etc.
+//
+// A last idea is to use `std::sync::Mutex`, which would work,
+// in a `LazyLock`, as a `static`. However, the code would still
+// be cluttered with calls to `Mutex::lock`, which can fail, also.
+//
+// `LazyCell` and `LazyLock` strategies suffer a problem I did not
+// foresee, which is that some use of the connection require a
+// _mutable_ reference to it. This is the case of `Connection::transaction`
+// for example. So `LazyCell`/`LazyLock` would have failed, because they
+// only provide shared references. `Mutex` provides both kinds of references.
+//
+// Apart from the strangeness of using `Mutex` in our single-threaded situation,
+// it has a limitation in multi-threaded scenarios, which is that it would
+// block threads when trying to lock the connection, if it is already locked.
+// This basically means we would not take advantage of the concurrency of
+// the database. But this application is single-threaded, so that should
+// work, right!? Not always, there can be a kind of deadlock. If a function
+// `f1 locks the connection, then calls a function `f2` which also tries
+// to lock the connection, `f2` will hang forever, as showcased
+// [here](https://users.rust-lang.org/t/how-to-use-mutex-correctly-between-functions/55071).
+// This is because `Mutex` is unlocked by its destructor, at the end of the scope.
+// This can easily be worked around by either unlocking the mutex manually (`Mutex::drop`),
+// by putting the code in a block which ends before the call to `f2`, or by using a
+// ["raw mutex"](https://docs.rs/parking_lot/latest/parking_lot/struct.RawMutex.html).
+//
+// Lastly, a connection pool can be used. It is the most powerful solution, as it:
+//
+// - is rather easy to understand,
+// - does not clutter the code too much,
+// - works in single-threaded and multi-threaded scenarios,
+// - is good for performance.
+//
+// A popular crate that implements a connection pool in Rust for sqlite is
+// [r2d2_sqlite](https://docs.rs/r2d2_sqlite/latest/r2d2_sqlite/).
+
+/// The database connection pool.
+///
+/// It is lazily initialized.
+///
+/// If the database does not exist, it is created and filled with the tables
+/// as part of the initialization.
+pub static DB_CONN_POOL: LazyLock<Pool<SqliteConnectionManager>> = LazyLock::new(|| {
+    // Check if the database existed. If not, need to create the tables.
+    let db_existed = DB_PATH.exists();
+
+    let manager = SqliteConnectionManager::file(&*DB_PATH);
+    let pool = Pool::new(manager).expect("Failed to create database connection pool.");
+
+    if !db_existed {
+        let conn = pool
+            .get()
+            .expect("Failed to get a database connection from the pool.");
+        create_tables(&conn).expect("Failed to create database tables.");
+    }
+
+    pool
 });
 
-pub fn open_db() -> anyhow::Result<Connection> {
-    Connection::open(DB_PATH.clone()).with_context(|| {
-        format!(
-            "Failed to open sqlite db file at location {}",
-            DB_PATH.to_string_lossy()
-        )
-    })
+/// Macro to get a database connection from the connection pool.
+#[macro_export]
+macro_rules! get_conn {
+    () => {{
+        $crate::db::DB_CONN_POOL
+            .get()
+            .expect("Failed to get a database connection from the pool.")
+    }};
 }
+// The line below is to make the macro public.
+// But macros are not treated like normal items, so need a trick,
+// as explained here <https://stackoverflow.com/a/31749071>.
+pub use get_conn;
 
 pub fn create_tables(conn: &Connection) -> anyhow::Result<()> {
     // Use an integer for storing days. Only seven bits are actually useful, one per day.
@@ -127,7 +241,7 @@ pub fn habit_insert(conn: &Connection, habit: &Habit) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn habit_write_history(conn: &Connection, habit_name: &str) -> anyhow::Result<()> {
+fn habit_write_history(conn: &Connection, habit_name: &str) -> anyhow::Result<()> {
     let (id, name, description, days, hour, minutes, suspended) = conn
         .query_row(
             "SELECT id, name, description, days, hour, minutes, suspended FROM Habit WHERE name = ?1",

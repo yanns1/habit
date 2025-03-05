@@ -19,13 +19,13 @@ const DAYS: [Day; 7] = [
 ];
 
 pub fn prompt_habit_name() -> anyhow::Result<String> {
-    let conn = db::open_db()?;
     let dialoguer_theme: ColorfulTheme = ColorfulTheme::default();
 
     let name = Input::<String>::with_theme(&dialoguer_theme)
         .with_prompt("Name (make it short!)")
         .validate_with(|input: &String| -> Result<(), String> {
             // Check that there is no existing habit with the same name
+            let conn = db::get_conn!();
             let input = input.trim();
             match conn.query_row(
                 "SELECT name FROM habit WHERE name = ?1",

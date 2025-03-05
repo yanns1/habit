@@ -14,7 +14,7 @@ struct DeleteEngine {
 
 impl Engine for DeleteEngine {
     fn run(&mut self) -> anyhow::Result<()> {
-        let conn = db::open_db()?;
+        let conn = db::get_conn!();
 
         // check if habit exists in db, if not error
         if !db::habit_exists(&conn, &self.habit)? {

@@ -14,7 +14,7 @@ struct LogEngine {
 
 impl Engine for LogEngine {
     fn run(&mut self) -> anyhow::Result<()> {
-        let conn = db::open_db()?;
+        let conn = db::get_conn!();
 
         // Check if habit exists.
         if !db::habit_exists(&conn, &self.habit)? {

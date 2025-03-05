@@ -1,7 +1,8 @@
+use crate::db;
 use crate::edit::cli::EditCli;
 use crate::edit::cli::What;
 use crate::engine::Engine;
-use crate::{db, prompt};
+use crate::prompt;
 use anyhow::anyhow;
 
 pub fn get_engine(cli: EditCli) -> Box<dyn Engine> {
@@ -18,7 +19,7 @@ struct EditEngine {
 
 impl Engine for EditEngine {
     fn run(&mut self) -> anyhow::Result<()> {
-        let conn = db::open_db()?;
+        let conn = db::get_conn!();
 
         // check if habit exists in db, if not error
         if !db::habit_exists(&conn, &self.habit)? {

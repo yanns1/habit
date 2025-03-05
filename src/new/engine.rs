@@ -21,7 +21,7 @@ impl Engine for NewEngine {
         let habit = Habit::new(name, description, days, at, false);
 
         // add to DB
-        let conn = db::open_db()?;
+        let conn = db::get_conn!();
         db::habit_insert(&conn, &habit)?;
 
         println!("Habit '{}' successfully created!", habit.name);

@@ -2,6 +2,8 @@ use crate::db;
 use crate::habit::{Day, Habit};
 use crate::utils;
 use chrono::{DateTime, Datelike, Local, TimeZone, Weekday};
+use r2d2::PooledConnection;
+use r2d2_sqlite::SqliteConnectionManager;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     prelude::{Buffer, Rect},
@@ -9,7 +11,6 @@ use ratatui::{
     text::Span,
     widgets::Widget,
 };
-use rusqlite::Connection;
 use std::cmp::Ordering;
 
 const N_WEEKS_IN_YEAR: u16 = 53;
@@ -39,7 +40,7 @@ enum DayType {
 }
 
 pub struct HeatMap {
-    conn: Option<Connection>,
+    conn: Option<PooledConnection<SqliteConnectionManager>>,
 
     days_mat: Vec<DayType>,
 
@@ -163,7 +164,7 @@ impl HeatMap {
         }
 
         if self.conn.is_none() {
-            self.conn = Some(db::open_db()?);
+            self.conn = Some(db::get_conn!());
         }
         let conn = self.conn.as_ref().unwrap();
 
