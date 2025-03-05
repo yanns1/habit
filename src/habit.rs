@@ -1,8 +1,9 @@
 use crate::utils;
 use chrono::Weekday;
 use regex::Regex;
+use std::fmt;
+use std::str::FromStr;
 use std::sync::LazyLock;
-use std::{fmt, str::FromStr};
 
 pub static AT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?<hour>\d\d):(?<minutes>\d\d)").unwrap());

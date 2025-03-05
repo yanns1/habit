@@ -8,19 +8,32 @@ use crate::utils;
 use anyhow::anyhow;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
-use ratatui::{
-    buffer::Buffer,
-    crossterm::event::{self, KeyCode, KeyEvent, KeyEventKind},
-    layout::{Direction, Layout, Rect},
-    prelude::Constraint,
-    style::{Color, Modifier, Style, Stylize},
-    text::{Line, Span},
-    widgets::{
-        Block, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget,
-        Widget, Wrap,
-    },
-    Frame,
-};
+use ratatui::buffer::Buffer;
+use ratatui::crossterm::event;
+use ratatui::crossterm::event::KeyCode;
+use ratatui::crossterm::event::KeyEvent;
+use ratatui::crossterm::event::KeyEventKind;
+use ratatui::layout::Direction;
+use ratatui::layout::Layout;
+use ratatui::layout::Rect;
+use ratatui::prelude::Constraint;
+use ratatui::style::Color;
+use ratatui::style::Modifier;
+use ratatui::style::Style;
+use ratatui::style::Stylize;
+use ratatui::text::Line;
+use ratatui::text::Span;
+use ratatui::widgets::Block;
+use ratatui::widgets::Clear;
+use ratatui::widgets::HighlightSpacing;
+use ratatui::widgets::List;
+use ratatui::widgets::ListItem;
+use ratatui::widgets::ListState;
+use ratatui::widgets::Paragraph;
+use ratatui::widgets::StatefulWidget;
+use ratatui::widgets::Widget;
+use ratatui::widgets::Wrap;
+use ratatui::Frame;
 use std::io;
 
 const PRIMARY_COLOR: Color = Color::LightBlue;

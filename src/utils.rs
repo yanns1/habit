@@ -1,5 +1,8 @@
 use crate::habit::Day;
-use chrono::{DateTime, Datelike, Local, TimeZone};
+use chrono::DateTime;
+use chrono::Datelike;
+use chrono::Local;
+use chrono::TimeZone;
 
 pub fn left_pad(s: &str, c: char, n: usize) -> String {
     if n <= s.len() {

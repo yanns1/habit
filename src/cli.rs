@@ -1,8 +1,13 @@
-use crate::{
-    delete::DeleteCli, edit::EditCli, list::ListCli, log::LogCli, new::NewCli, resume::ResumeCli,
-    show::ShowCli, suspend::SuspendCli,
-};
-use clap::{Parser, Subcommand};
+use crate::delete::DeleteCli;
+use crate::edit::EditCli;
+use crate::list::ListCli;
+use crate::log::LogCli;
+use crate::new::NewCli;
+use crate::resume::ResumeCli;
+use crate::show::ShowCli;
+use crate::suspend::SuspendCli;
+use clap::Parser;
+use clap::Subcommand;
 
 #[derive(Parser, Debug)]
 #[command(version)]

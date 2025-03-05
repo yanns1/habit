@@ -1,16 +1,23 @@
 use crate::db;
-use crate::habit::{Day, Habit};
+use crate::habit::Day;
+use crate::habit::Habit;
 use crate::utils;
-use chrono::{DateTime, Datelike, Local, TimeZone, Weekday};
+use chrono::DateTime;
+use chrono::Datelike;
+use chrono::Local;
+use chrono::TimeZone;
+use chrono::Weekday;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
-use ratatui::{
-    layout::{Constraint, Direction, Layout},
-    prelude::{Buffer, Rect},
-    style::{Style, Stylize},
-    text::Span,
-    widgets::Widget,
-};
+use ratatui::layout::Constraint;
+use ratatui::layout::Direction;
+use ratatui::layout::Layout;
+use ratatui::prelude::Buffer;
+use ratatui::prelude::Rect;
+use ratatui::style::Style;
+use ratatui::style::Stylize;
+use ratatui::text::Span;
+use ratatui::widgets::Widget;
 use std::cmp::Ordering;
 
 const N_WEEKS_IN_YEAR: u16 = 53;

@@ -1,9 +1,13 @@
 use crate::habit;
-use crate::habit::{At, Day, Habit};
+use crate::habit::At;
+use crate::habit::Day;
+use crate::habit::Habit;
 use crate::paths::DB_PATH;
 use anyhow::anyhow;
 use anyhow::Context;
-use chrono::{DateTime, Local, TimeZone};
+use chrono::DateTime;
+use chrono::Local;
+use chrono::TimeZone;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;

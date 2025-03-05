@@ -3,9 +3,10 @@ use crate::habit::At;
 use crate::habit::Day;
 use crate::habit::ParseAtError;
 use anyhow::Context;
+use dialoguer::theme::ColorfulTheme;
 use dialoguer::Confirm;
+use dialoguer::Input;
 use dialoguer::MultiSelect;
-use dialoguer::{theme::ColorfulTheme, Input};
 use std::str::FromStr;
 
 const DAYS: [Day; 7] = [
