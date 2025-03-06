@@ -16,7 +16,7 @@ use clap::Subcommand;
 /// A command-line habit tracker.
 ///
 /// Create habits, log your reps and see your progress via
-/// cool terminal-based visualizations (yes, there is ASCII art!).
+/// cool terminal-based visualizations.
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
