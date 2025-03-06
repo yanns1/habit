@@ -54,9 +54,6 @@ pub struct HeatMap {
     today: DateTime<Local>,
     today_year: i32,
 
-    // TODO(yann): We may not want to keep state for the year, instead let the App manage
-    // the year, as it could be used for all visualizations.
-    // Or maybe we want each visualizer to have its year...
     year: i32,
     start_idx: usize,
     today_idx: usize,
