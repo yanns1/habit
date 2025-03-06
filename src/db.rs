@@ -590,3 +590,12 @@ pub fn habit_get_logs_for_year(
 
     Ok(datetimes)
 }
+
+pub fn log_table_is_empty(conn: &Connection) -> anyhow::Result<bool> {
+    conn.query_row(
+        "SELECT CASE WHEN EXISTS(SELECT 1 FROM Log) THEN 0 ELSE 1 END",
+        [],
+        |row| row.get::<_, bool>(0),
+    )
+    .with_context(|| "Failed to check if Log table is empty.")
+}

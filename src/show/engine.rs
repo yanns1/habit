@@ -73,10 +73,15 @@ impl Engine for ShowEngine {
                 .position(|habit| habit.name == *habit_name)
                 .expect("Initial habit comes from database, so should be within all the habits.")
         } else {
-            let habit_name = db::habit_get_name_with_most_recent_log(&conn)?;
+            let habit_name = if !db::log_table_is_empty(&conn)? {
+                &db::habit_get_name_with_most_recent_log(&conn)?
+            } else {
+                &habits[0].name
+            };
+
             habits
                 .iter()
-                .position(|habit| habit.name == habit_name)
+                .position(|habit| habit.name == *habit_name)
                 .expect("Initial habit comes from database, so should be within all the habits.")
         };
 
