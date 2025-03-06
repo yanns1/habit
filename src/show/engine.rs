@@ -58,8 +58,15 @@ impl Engine for ShowEngine {
             }
         }
 
-        // Prepare init data.
         let habits = db::habit_get_all(&conn)?;
+
+        // If no habits, no reason to open the TUI.
+        if habits.is_empty() {
+            println!("You have no habits yet! Create one using `habit new`.");
+            return Ok(());
+        }
+
+        // Prepare init data.
         let init_habit_idx = if let Some(ref habit_name) = self.habit {
             habits
                 .iter()
