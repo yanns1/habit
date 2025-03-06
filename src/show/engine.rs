@@ -1,8 +1,8 @@
-use super::heatmap::HeatMap;
 use crate::db;
 use crate::engine::Engine;
 use crate::habit::Habit;
 use crate::show::cli::ShowCli;
+use crate::show::heatmap::HeatMap;
 use crate::tui;
 use crate::utils;
 use anyhow::anyhow;

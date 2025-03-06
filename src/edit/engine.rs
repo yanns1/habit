@@ -1,9 +1,8 @@
-use crate::{
-    db,
-    edit::cli::{EditCli, What},
-    engine::Engine,
-    prompt,
-};
+use crate::db;
+use crate::edit::cli::EditCli;
+use crate::edit::cli::What;
+use crate::engine::Engine;
+use crate::prompt;
 use anyhow::anyhow;
 
 pub fn get_engine(cli: EditCli) -> Box<dyn Engine> {
