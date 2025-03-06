@@ -229,6 +229,8 @@ impl Default for HeatMap {
 impl Widget for &mut HeatMap {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Layout
+        // ------
+
         let [_, year_rect, _, days_rect, nav_rect, _] = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -268,6 +270,8 @@ impl Widget for &mut HeatMap {
             .areas(nav_rect);
 
         // Styles
+        // ------
+
         // NOTE: Cannot make these constants, because some methods are not const.
         let on_black = Style::new().white().on_black();
         let on_gray = Style::new().black().on_gray();
@@ -275,59 +279,74 @@ impl Widget for &mut HeatMap {
         let on_light_green = Style::new().black().on_light_green();
         let on_light_red = Style::new().white().on_light_red();
 
+        // Rendering
+        // ---------
+
         // Render year
-        buf.set_span(
-            year_rect.x,
-            year_rect.y,
-            &Span::styled(self.year.to_string(), on_black),
-            WIDTH_FOR_YEAR,
-        );
+        // ^^^^^^^^^^^
+        // NOTE: Do not seem to need to check if content is out of bounds on the horizontal axis,
+        // but needs to for the vertical axis, otherwise the program will panic in attempting
+        // to write outside the buffer.
+        // The `Span` widget thus probably already manages attempts to write outside the bounds
+        // horizontally.
+        if year_rect.y < year_rect.bottom() {
+            buf.set_span(
+                year_rect.x,
+                year_rect.y,
+                &Span::styled(self.year.to_string(), on_black),
+                WIDTH_FOR_YEAR,
+            );
+        }
 
         // Render day names
-        buf.set_span(
-            days_rect.x,
-            days_rect.y,
-            &Span::styled("Mon", on_black),
-            WIDTH_FOR_DAY_NAME,
-        );
-        buf.set_span(
-            days_rect.x,
-            days_rect.y + HEIGHT_FOR_DAY_NAME,
-            &Span::styled("Tue", on_black),
-            WIDTH_FOR_DAY_NAME,
-        );
-        buf.set_span(
-            days_rect.x,
-            days_rect.y + 2 * HEIGHT_FOR_DAY_NAME,
-            &Span::styled("Wed", on_black),
-            WIDTH_FOR_DAY_NAME,
-        );
-        buf.set_span(
-            days_rect.x,
-            days_rect.y + 3 * HEIGHT_FOR_DAY_NAME,
-            &Span::styled("Thu", on_black),
-            WIDTH_FOR_DAY_NAME,
-        );
-        buf.set_span(
-            days_rect.x,
-            days_rect.y + 4 * HEIGHT_FOR_DAY_NAME,
-            &Span::styled("Fri", on_black),
-            WIDTH_FOR_DAY_NAME,
-        );
-        buf.set_span(
-            days_rect.x,
-            days_rect.y + 5 * HEIGHT_FOR_DAY_NAME,
-            &Span::styled("Sat", on_black),
-            WIDTH_FOR_DAY_NAME,
-        );
-        buf.set_span(
-            days_rect.x,
-            days_rect.y + 6 * HEIGHT_FOR_DAY_NAME,
-            &Span::styled("Sun", on_black),
-            WIDTH_FOR_DAY_NAME,
-        );
+        // ^^^^^^^^^^^^^^^^
+        if days_rect.y + 6 * HEIGHT_FOR_DAY_NAME < days_rect.bottom() {
+            buf.set_span(
+                days_rect.x,
+                days_rect.y,
+                &Span::styled("Mon", on_black),
+                WIDTH_FOR_DAY_NAME,
+            );
+            buf.set_span(
+                days_rect.x,
+                days_rect.y + HEIGHT_FOR_DAY_NAME,
+                &Span::styled("Tue", on_black),
+                WIDTH_FOR_DAY_NAME,
+            );
+            buf.set_span(
+                days_rect.x,
+                days_rect.y + 2 * HEIGHT_FOR_DAY_NAME,
+                &Span::styled("Wed", on_black),
+                WIDTH_FOR_DAY_NAME,
+            );
+            buf.set_span(
+                days_rect.x,
+                days_rect.y + 3 * HEIGHT_FOR_DAY_NAME,
+                &Span::styled("Thu", on_black),
+                WIDTH_FOR_DAY_NAME,
+            );
+            buf.set_span(
+                days_rect.x,
+                days_rect.y + 4 * HEIGHT_FOR_DAY_NAME,
+                &Span::styled("Fri", on_black),
+                WIDTH_FOR_DAY_NAME,
+            );
+            buf.set_span(
+                days_rect.x,
+                days_rect.y + 5 * HEIGHT_FOR_DAY_NAME,
+                &Span::styled("Sat", on_black),
+                WIDTH_FOR_DAY_NAME,
+            );
+            buf.set_span(
+                days_rect.x,
+                days_rect.y + 6 * HEIGHT_FOR_DAY_NAME,
+                &Span::styled("Sun", on_black),
+                WIDTH_FOR_DAY_NAME,
+            );
+        }
 
         // Render days matrix
+        // ^^^^^^^^^^^^^^^^^^
         let mut i = 0;
         let start_x = days_mat_rect.x;
         let end_x = start_x + WIDTH_FOR_DAY * N_WEEKS_IN_YEAR;
@@ -335,6 +354,11 @@ impl Widget for &mut HeatMap {
         let end_y = start_y + HEIGHT_FOR_DAY * N_DAYS_IN_WEEK;
         for x in (start_x..end_x).step_by(WIDTH_FOR_DAY as usize) {
             for y in (start_y..end_y).step_by(HEIGHT_FOR_DAY as usize) {
+                if y >= days_mat_rect.bottom() {
+                    i += 1;
+                    continue;
+                }
+
                 let span = match self.days_mat[i] {
                     DayType::NotInYear => None,
                     DayType::ToCome => Some(Span::styled(
@@ -380,11 +404,14 @@ impl Widget for &mut HeatMap {
         }
 
         // Render nav
-        buf.set_span(
-            nav_rect.x,
-            nav_rect.y,
-            &Span::styled("< h | o | l >", on_black),
-            WIDTH_FOR_NAV,
-        );
+        // ^^^^^^^^^^
+        if nav_rect.y < nav_rect.bottom() {
+            buf.set_span(
+                nav_rect.x,
+                nav_rect.y,
+                &Span::styled("< h | o | l >", on_black),
+                WIDTH_FOR_NAV,
+            );
+        }
     }
 }
