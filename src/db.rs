@@ -132,7 +132,6 @@ pub static DB_CONN_POOL: LazyLock<Pool<SqliteConnectionManager>> = LazyLock::new
 });
 
 /// Macro to get a database connection from the connection pool.
-#[macro_export]
 macro_rules! get_conn {
     () => {{
         $crate::db::DB_CONN_POOL
@@ -140,10 +139,11 @@ macro_rules! get_conn {
             .expect("Failed to get a database connection from the pool.")
     }};
 }
-// The line below is to make the macro public.
-// But macros are not treated like normal items, so need a trick,
-// as explained here <https://stackoverflow.com/a/31749071>.
-pub use get_conn;
+// NOTE: The line below is to make the macro public to this crate only.
+// Explanations here <https://stackoverflow.com/a/31749071>.
+// I am still do not quite understand why `pub(crate)` instead of `pub`,
+// however.
+pub(crate) use get_conn;
 
 pub fn create_tables(conn: &Connection) -> anyhow::Result<()> {
     // Use an integer for storing days. Only seven bits are actually useful, one per day.
