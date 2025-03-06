@@ -21,7 +21,7 @@ impl Engine for SuspendEngine {
         }
 
         // Check if habit is already suspended.
-        if db::habit_suspended(&conn, &self.habit)? {
+        if db::habit_is_suspended(&conn, &self.habit)? {
             println!("Habit '{}' is already suspended.", self.habit);
             return Ok(());
         }

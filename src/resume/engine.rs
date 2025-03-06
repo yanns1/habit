@@ -21,7 +21,7 @@ impl Engine for ResumeEngine {
         }
 
         // Check if habit is already resumed.
-        if !db::habit_suspended(&conn, &self.habit)? {
+        if !db::habit_is_suspended(&conn, &self.habit)? {
             println!("Habit '{}' is already resumed.", self.habit);
             return Ok(());
         }

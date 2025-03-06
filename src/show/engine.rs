@@ -274,24 +274,24 @@ impl Widget for &mut App {
         // Widgets
         // -------
 
-        // Habit description
-        let mut habit_desc = vec![];
+        // Habit details
+        let mut habit_details = vec![];
         for line in textwrap::wrap(
             &selected_habit.description,
             habit_details_area.width as usize,
         ) {
-            habit_desc.push(Line::from(line.to_string()));
+            habit_details.push(Line::from(line.to_string()));
         }
         for _ in 0..(habit_details_area.height as usize)
-            .saturating_sub(habit_desc.len())
-            .saturating_sub(if selected_habit.suspended { 4 } else { 3 })
+            .saturating_sub(habit_details.len())
+            .saturating_sub(if selected_habit.suspended { 5 } else { 4 })
         {
-            habit_desc.push(Line::from(""));
+            habit_details.push(Line::from(""));
         }
         if selected_habit.suspended {
-            habit_desc.push(Line::from("(suspended)").style(Style::new().italic()))
+            habit_details.push(Line::from("(suspended)").style(Style::new().italic()))
         }
-        habit_desc.push(Line::from(vec![
+        habit_details.push(Line::from(vec![
             Span::from(">").style(Style::new().dark_gray()),
             Span::from(format!(
                 " Each {} at {}.",
@@ -299,8 +299,10 @@ impl Widget for &mut App {
                 selected_habit.at
             )),
         ]));
+        habit_details
+            .push(Line::from(format!("Created at {}.", selected_habit.created_at)).italic());
 
-        let habit_desc_para = Paragraph::new(habit_desc)
+        let habit_details_para = Paragraph::new(habit_details)
             .block(Block::bordered().title("Habit details"))
             .style(Style::new().white().on_black())
             .wrap(Wrap { trim: true });
@@ -371,7 +373,7 @@ impl Widget for &mut App {
         // Rendering
         // ---------
 
-        habit_desc_para.render(habit_details_area, buf);
+        habit_details_para.render(habit_details_area, buf);
         StatefulWidget::render(habit_list, habit_list_area, buf, &mut self.habit_list_state);
         self.heatmap.render(heatmap_area, buf);
         summary_para.render(summary_area, buf);

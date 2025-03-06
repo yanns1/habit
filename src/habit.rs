@@ -1,4 +1,6 @@
 use crate::utils;
+use chrono::DateTime;
+use chrono::Local;
 use chrono::Weekday;
 use regex::Regex;
 use std::fmt;
@@ -18,16 +20,29 @@ pub struct Habit {
     pub days: Vec<Day>,
     pub at: At,
     pub suspended: bool,
+    pub created_at: DateTime<Local>,
 }
 
 impl Habit {
-    pub fn new(name: String, description: String, days: Vec<Day>, at: At, suspended: bool) -> Self {
+    pub fn new(
+        name: String,
+        description: String,
+        days: Vec<Day>,
+        at: At,
+        suspended: bool,
+        created_at: Option<DateTime<Local>>,
+    ) -> Self {
         Self {
             name,
             description,
             days,
             at,
             suspended,
+            created_at: if let Some(created_at) = created_at {
+                created_at
+            } else {
+                chrono::Local::now()
+            },
         }
     }
 }

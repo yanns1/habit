@@ -48,6 +48,10 @@ impl Engine for ListEngine {
                 ) {
                     println!("    {}", line);
                 }
+                for line in textwrap::wrap(&format!("Created at {}.", habit.created_at), max_width)
+                {
+                    println!("    {}", line.italic());
+                }
             }
         } else {
             let mut habit_names = db::habit_get_names(&conn)?;

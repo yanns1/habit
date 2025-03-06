@@ -22,7 +22,7 @@ impl Engine for LogEngine {
         }
 
         // Check if habit is suspended.
-        if db::habit_suspended(&conn, &self.habit)? {
+        if db::habit_is_suspended(&conn, &self.habit)? {
             println!("Nothing done, because habit '{}' is suspended. If you want, you can resume it with `habit resume {}`.", self.habit, self.habit);
             return Ok(());
         }

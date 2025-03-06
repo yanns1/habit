@@ -174,18 +174,20 @@ pub fn create_tables(conn: &Connection) -> anyhow::Result<()> {
             hour        INTEGER NOT NULL,
             minutes     INTEGER NOT NULL,
             suspended   INTEGER NOT NULL,
+            created_at  INTEGER NOT NULL,
             PRIMARY KEY (name)
         );
         CREATE TABLE HabitHistory (
             habit_id    INTEGER NOT NULL,
-            created_at  INTEGER NOT NULL,
             name        TEXT NOT NULL,
             description TEXT NOT NULL,
             days        INTEGER NOT NULL,
             hour        INTEGER NOT NULL,
             minutes     INTEGER NOT NULL,
             suspended   INTEGER NOT NULL,
-            PRIMARY KEY (habit_id, created_at),
+            created_at  INTEGER NOT NULL,
+            recorded_at INTEGER NOT NULL,
+            PRIMARY KEY (habit_id, recorded_at),
             FOREIGN KEY (habit_id) REFERENCES Habit(id) ON DELETE CASCADE
         );
         CREATE TABLE Log (
@@ -202,6 +204,15 @@ pub fn create_tables(conn: &Connection) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn habit_table_is_empty(conn: &Connection) -> anyhow::Result<bool> {
+    conn.query_row(
+        "SELECT CASE WHEN EXISTS(SELECT 1 FROM Habit) THEN 0 ELSE 1 END",
+        [],
+        |row| row.get::<_, bool>(0),
+    )
+    .with_context(|| "Failed to check if Habit table is empty.")
+}
+
 pub fn habit_insert(conn: &Connection, habit: &Habit) -> anyhow::Result<()> {
     // Query the current max id to have the new be one more.
     // This can be slow if there are many habits. It is reasonable to
@@ -212,12 +223,7 @@ pub fn habit_insert(conn: &Connection, habit: &Habit) -> anyhow::Result<()> {
     //
     // The very first row inserted is a special case. If the table is empty,
     // MAX will fail. So first check if the table is empty. If so, set `id` to 0.
-    let is_empty = conn
-        .query_row("SELECT EXISTS (SELECT 1 FROM Habit)", [], |row| {
-            row.get::<_, u8>(0).map(|v| v == 0)
-        })
-        .with_context(|| "Query to see if there exists at least one row in Habit failed.")?;
-    let id = if is_empty {
+    let id = if habit_table_is_empty(conn)? {
         0
     } else {
         conn.query_row("SELECT MAX(id) FROM Habit", [], |row| {
@@ -225,10 +231,13 @@ pub fn habit_insert(conn: &Connection, habit: &Habit) -> anyhow::Result<()> {
         })
         .with_context(|| "Query to select max id of Habit failed.")?
     };
+
     let byte = habit::days_to_byte(&habit.days[..]);
 
+    let created_at_timestamp = habit.created_at.timestamp();
+
     conn.execute(
-        "INSERT INTO Habit (id, name, description, days, hour, minutes, suspended) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO Habit (id, name, description, days, hour, minutes, suspended, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![
             id,
             habit.name,
@@ -237,18 +246,19 @@ pub fn habit_insert(conn: &Connection, habit: &Habit) -> anyhow::Result<()> {
             habit.at.hour,
             habit.at.minutes,
             habit.suspended,
+            created_at_timestamp,
         ],
     )
-    .with_context(|| format!("Failed to insert '({}, {}, {}, {}, {}, {}, {})' into Habit.", id,
-        habit.name, habit.description, byte, habit.at.hour, habit.at.minutes, habit.suspended))?;
+    .with_context(|| format!("Failed to insert '({}, {}, {}, {}, {}, {}, {}, {})' into Habit.", id,
+        habit.name, habit.description, byte, habit.at.hour, habit.at.minutes, habit.suspended, created_at_timestamp))?;
 
     Ok(())
 }
 
 fn habit_write_history(conn: &Connection, habit_name: &str) -> anyhow::Result<()> {
-    let (id, name, description, days, hour, minutes, suspended) = conn
+    let (id, name, description, days, hour, minutes, suspended, created_at_timestamp) = conn
         .query_row(
-            "SELECT id, name, description, days, hour, minutes, suspended FROM Habit WHERE name = ?1",
+            "SELECT id, name, description, days, hour, minutes, suspended, created_at FROM Habit WHERE name = ?1",
             rusqlite::params![habit_name],
             |row| {
                 let id = row.get::<_, usize>(0)?;
@@ -258,17 +268,19 @@ fn habit_write_history(conn: &Connection, habit_name: &str) -> anyhow::Result<()
                 let hour = row.get::<_, u8>(4)?;
                 let minutes = row.get::<_, u8>(5)?;
                 let suspended = row.get::<_, bool>(6)?;
-                Ok((id, name, description, days, hour, minutes, suspended))
+                let created_at_timestamp = row.get::<_, i64>(7)?;
+                Ok((id, name, description, days, hour, minutes, suspended, created_at_timestamp))
             },
         )
         .with_context(|| format!("Failed to select Habit with name '{}'.", habit_name))?;
 
-    let created_at = chrono::Local::now().timestamp();
+    let recorded_at_timestamp = chrono::Local::now().timestamp();
     conn.execute(
-        "INSERT INTO HabitHistory (habit_id, created_at, name, description, days, hour, minutes, suspended) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        rusqlite::params![id, created_at, name, description, days, hour, minutes, suspended]
+        "INSERT INTO HabitHistory (habit_id, name, description, days, hour, minutes, suspended, created_at, recorded_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![id, name, description, days, hour, minutes, suspended, created_at_timestamp, recorded_at_timestamp]
     ).with_context(|| {
-        format!("Failed to insert '({}, {}, {}, {}, {}, {}, {}, {})' into HabitHistory.", id, created_at, name, description, days, hour, minutes, suspended)
+        format!("Failed to insert '({}, {}, {}, {}, {}, {}, {}, {}, {})' into HabitHistory.",
+            id, name, description, days, hour, minutes, suspended, created_at_timestamp, recorded_at_timestamp)
     })?;
 
     Ok(())
@@ -392,7 +404,7 @@ pub fn habit_exists(conn: &Connection, habit_name: &str) -> anyhow::Result<bool>
     }
 }
 
-pub fn habit_suspended(conn: &Connection, habit_name: &str) -> anyhow::Result<bool> {
+pub fn habit_is_suspended(conn: &Connection, habit_name: &str) -> anyhow::Result<bool> {
     conn.query_row(
         "SELECT suspended FROM Habit WHERE name = ?1",
         rusqlite::params![habit_name],
@@ -408,7 +420,7 @@ pub fn habit_suspended(conn: &Connection, habit_name: &str) -> anyhow::Result<bo
 
 pub fn habit_get_by_name(conn: &Connection, habit_name: &str) -> anyhow::Result<Habit> {
     conn.query_row(
-        "SELECT name, description, days, hour, minutes, suspended FROM Habit WHERE name = ?1",
+        "SELECT name, description, days, hour, minutes, suspended, created_at FROM Habit WHERE name = ?1",
         rusqlite::params![habit_name],
         |row| {
             let name = row.get::<_, String>(0)?;
@@ -417,7 +429,11 @@ pub fn habit_get_by_name(conn: &Connection, habit_name: &str) -> anyhow::Result<
             let at = At::build(row.get::<usize, u8>(3)?, row.get::<usize, u8>(4)?)
                 .expect("Hour and minutes from database should be valid.");
             let suspended = row.get::<_, bool>(5)?;
-            Ok(Habit::new(name, description, days, at, suspended))
+            let created_at_timestamp = row.get::<_, i64>(6)?;
+            let created_at = DateTime::from_timestamp(created_at_timestamp, 0)
+                .expect("Timestamp stored in database should be that returned by DateTime::timestamp, unchanged.")
+                .with_timezone(&Local);
+            Ok(Habit::new(name, description, days, at, suspended, Some(created_at)))
         },
     )
     .with_context(|| format!("Failed to select Habit with name '{}'.", habit_name))
@@ -437,7 +453,7 @@ pub fn habit_get_name_with_most_recent_log(conn: &Connection) -> anyhow::Result<
 
 pub fn habit_get_all(conn: &Connection) -> anyhow::Result<Vec<Habit>> {
     let mut stmt = conn
-        .prepare("SELECT name, description, days, hour, minutes, suspended FROM Habit")
+        .prepare("SELECT name, description, days, hour, minutes, suspended, created_at FROM Habit")
         .with_context(|| "Failed to prepare 'select all habits' statement.")?;
 
     let rows = stmt
@@ -448,7 +464,11 @@ pub fn habit_get_all(conn: &Connection) -> anyhow::Result<Vec<Habit>> {
             let at = At::build(row.get::<_, u8>(3)?, row.get::<_, u8>(4)?)
                 .expect("Hour and minutes from database should be valid.");
             let suspended = row.get::<_, bool>(5)?;
-            Ok(Habit::new(name, description, days, at, suspended))
+            let created_at_timestamp = row.get::<_, i64>(6)?;
+            let created_at = DateTime::from_timestamp(created_at_timestamp, 0)
+                .expect("Timestamp stored in database should be that returned by DateTime::timestamp, unchanged.")
+                .with_timezone(&Local);
+            Ok(Habit::new(name, description, days, at, suspended, Some(created_at)))
         })
         .with_context(|| "Failed to select all habits.")?;
 
