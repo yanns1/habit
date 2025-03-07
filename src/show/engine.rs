@@ -34,6 +34,8 @@ use ratatui::widgets::Paragraph;
 use ratatui::widgets::StatefulWidget;
 use ratatui::widgets::Widget;
 use ratatui::widgets::Wrap;
+use std::collections::hash_map;
+use std::collections::HashMap;
 
 const PRIMARY_COLOR: Color = Color::LightBlue;
 const POINTED_LIST_ITEM_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
@@ -110,8 +112,11 @@ struct App {
 
     year: i32,
     cur_year: i32,
-    n_reps_for_year: usize,
-    n_reps_total: usize,
+
+    // Key is (<selected_habit_idx>, <year>).
+    n_reps_for_year: HashMap<(usize, i32), usize>,
+    // Key is <selected_habit_idx>.
+    n_reps_total: HashMap<usize, usize>,
 }
 
 impl App {
@@ -131,9 +136,18 @@ impl App {
         habit_list_state.select(Some(selected_habit_idx));
 
         let cur_year = Local::now().year();
-        let n_reps_for_year =
-            db::habit_get_n_logs_for_year(&conn, &habits[selected_habit_idx].name, cur_year)?;
-        let n_reps_total = db::habit_get_n_logs(&conn, &habits[selected_habit_idx].name)?;
+
+        let mut n_reps_for_year = HashMap::new();
+        n_reps_for_year.insert(
+            (selected_habit_idx, cur_year),
+            db::habit_get_n_logs_for_year(&conn, &habits[selected_habit_idx].name, cur_year)?,
+        );
+
+        let mut n_reps_total = HashMap::new();
+        n_reps_total.insert(
+            selected_habit_idx,
+            db::habit_get_n_logs(&conn, &habits[selected_habit_idx].name)?,
+        );
 
         let mut calendar = Calendar::new();
         calendar.update_to_habit_and_year(&habits[selected_habit_idx], cur_year)?;
@@ -153,6 +167,7 @@ impl App {
 
             year: cur_year,
             cur_year,
+
             n_reps_for_year,
             n_reps_total,
         })
@@ -205,11 +220,14 @@ impl App {
                         self.year,
                     )?;
 
-                    self.n_reps_for_year = db::habit_get_n_logs_for_year(
-                        &self.conn,
-                        &self.habits[self.selected_habit_idx].name,
-                        self.year,
-                    )?;
+                    let k = (self.selected_habit_idx, self.year);
+                    if let hash_map::Entry::Vacant(e) = self.n_reps_for_year.entry(k) {
+                        e.insert(db::habit_get_n_logs_for_year(
+                            &self.conn,
+                            &self.habits[self.selected_habit_idx].name,
+                            self.year,
+                        )?);
+                    }
                 }
                 KeyCode::Char('l') | KeyCode::Right => {
                     self.year += 1;
@@ -220,11 +238,14 @@ impl App {
                         self.year,
                     )?;
 
-                    self.n_reps_for_year = db::habit_get_n_logs_for_year(
-                        &self.conn,
-                        &self.habits[self.selected_habit_idx].name,
-                        self.year,
-                    )?;
+                    let k = (self.selected_habit_idx, self.year);
+                    if let hash_map::Entry::Vacant(e) = self.n_reps_for_year.entry(k) {
+                        e.insert(db::habit_get_n_logs_for_year(
+                            &self.conn,
+                            &self.habits[self.selected_habit_idx].name,
+                            self.year,
+                        )?);
+                    }
                 }
                 KeyCode::Char('o') => {
                     if self.year != self.cur_year {
@@ -236,11 +257,14 @@ impl App {
                             self.year,
                         )?;
 
-                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
-                            &self.conn,
-                            &self.habits[self.selected_habit_idx].name,
-                            self.year,
-                        )?;
+                        let k = (self.selected_habit_idx, self.year);
+                        if let hash_map::Entry::Vacant(e) = self.n_reps_for_year.entry(k) {
+                            e.insert(db::habit_get_n_logs_for_year(
+                                &self.conn,
+                                &self.habits[self.selected_habit_idx].name,
+                                self.year,
+                            )?);
+                        }
                     }
                 }
                 KeyCode::Enter => {
@@ -256,15 +280,23 @@ impl App {
                         self.calendar
                             .update_to_habit(&self.habits[self.selected_habit_idx])?;
 
-                        self.n_reps_total = db::habit_get_n_logs(
-                            &self.conn,
-                            &self.habits[self.selected_habit_idx].name,
-                        )?;
-                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
-                            &self.conn,
-                            &self.habits[self.selected_habit_idx].name,
-                            self.year,
-                        )?;
+                        if let hash_map::Entry::Vacant(e) =
+                            self.n_reps_total.entry(self.selected_habit_idx)
+                        {
+                            e.insert(db::habit_get_n_logs(
+                                &self.conn,
+                                &self.habits[self.selected_habit_idx].name,
+                            )?);
+                        }
+
+                        let k = (self.selected_habit_idx, self.year);
+                        if let hash_map::Entry::Vacant(e) = self.n_reps_for_year.entry(k) {
+                            e.insert(db::habit_get_n_logs_for_year(
+                                &self.conn,
+                                &self.habits[self.selected_habit_idx].name,
+                                self.year,
+                            )?);
+                        }
                     }
                 }
                 KeyCode::Char('?') => {
@@ -296,9 +328,18 @@ impl Widget for &mut App {
             .constraints([
                 Constraint::Percentage(15),
                 Constraint::Fill(1),
-                Constraint::Percentage(10),
+                Constraint::Percentage(20),
             ])
             .areas(habit_details_area);
+
+        let [_, summary_area, _] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Percentage(50),
+                Constraint::Fill(1),
+            ])
+            .areas(summary_area);
 
         // Widgets
         // -------
@@ -357,51 +398,18 @@ impl Widget for &mut App {
             .highlight_spacing(HighlightSpacing::Always);
 
         // Summary paragraph
-        let summary_lines = vec![
-            Line::from(vec![
-                Span::from(format!("In {}, you have completed ", self.year)),
-                Span::styled(
-                    format!(
-                        "{} {}",
-                        self.n_reps_for_year,
-                        if self.n_reps_for_year <= 1 {
-                            "rep"
-                        } else {
-                            "reps"
-                        }
-                    ),
-                    Style::new().bold(),
-                ),
-                Span::from(format!(
-                    " for habit '{}'. {}",
-                    selected_habit.name,
-                    if self.n_reps_for_year > 0 {
-                        "Congratulations!"
-                    } else {
-                        ""
-                    }
-                )),
-            ]),
-            Line::from(vec![
-                Span::from("Since the beginning, you have completed "),
-                Span::styled(
-                    format!(
-                        "{} {}",
-                        self.n_reps_total,
-                        if self.n_reps_total <= 1 {
-                            "rep"
-                        } else {
-                            "reps"
-                        }
-                    ),
-                    Style::new().bold(),
-                ),
-                Span::from("."),
-            ]),
-        ];
-        let summary_para = Paragraph::new(summary_lines)
-            .centered()
-            .wrap(Wrap { trim: true });
+        let summary_para = Paragraph::new(vec![
+            Line::from(format!(
+                "Total reps: {}",
+                self.n_reps_total[&self.selected_habit_idx]
+            )),
+            Line::from(format!(
+                "Total reps for year: {}",
+                self.n_reps_for_year[&(self.selected_habit_idx, self.year)]
+            )),
+        ])
+        .block(Block::bordered().title("Summary"))
+        .wrap(Wrap { trim: true });
 
         // Rendering
         // ---------
