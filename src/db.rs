@@ -418,27 +418,6 @@ pub fn habit_is_suspended(conn: &Connection, habit_name: &str) -> anyhow::Result
     })
 }
 
-pub fn habit_get_by_name(conn: &Connection, habit_name: &str) -> anyhow::Result<Habit> {
-    conn.query_row(
-        "SELECT name, description, days, hour, minutes, suspended, created_at FROM Habit WHERE name = ?1",
-        rusqlite::params![habit_name],
-        |row| {
-            let name = row.get::<_, String>(0)?;
-            let description = row.get::<_, String>(1)?;
-            let days = habit::byte_to_days(row.get::<_, u8>(2)?);
-            let at = At::build(row.get::<usize, u8>(3)?, row.get::<usize, u8>(4)?)
-                .expect("Hour and minutes from database should be valid.");
-            let suspended = row.get::<_, bool>(5)?;
-            let created_at_timestamp = row.get::<_, i64>(6)?;
-            let created_at = DateTime::from_timestamp(created_at_timestamp, 0)
-                .expect("Timestamp stored in database should be that returned by DateTime::timestamp, unchanged.")
-                .with_timezone(&Local);
-            Ok(Habit::new(name, description, days, at, suspended, Some(created_at)))
-        },
-    )
-    .with_context(|| format!("Failed to select Habit with name '{}'.", habit_name))
-}
-
 pub fn habit_get_name_with_most_recent_log(conn: &Connection) -> anyhow::Result<String> {
     let habit_id = conn
         .query_row(
