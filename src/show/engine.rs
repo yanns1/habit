@@ -13,7 +13,6 @@ use r2d2_sqlite::SqliteConnectionManager;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event;
 use ratatui::crossterm::event::KeyCode;
-use ratatui::crossterm::event::KeyEvent;
 use ratatui::crossterm::event::KeyEventKind;
 use ratatui::layout::Direction;
 use ratatui::layout::Layout;
@@ -35,8 +34,6 @@ use ratatui::widgets::Paragraph;
 use ratatui::widgets::StatefulWidget;
 use ratatui::widgets::Widget;
 use ratatui::widgets::Wrap;
-use ratatui::Frame;
-use std::io;
 
 const PRIMARY_COLOR: Color = Color::LightBlue;
 const POINTED_LIST_ITEM_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
@@ -88,10 +85,11 @@ impl Engine for ShowEngine {
         };
 
         // Run the TUI.
+        let mut app = App::build(conn, habits, init_habit_idx)?;
         let mut terminal = tui::init()?;
-        let app_result = App::build(conn, habits, init_habit_idx)?.run(&mut terminal);
+        let result = app.run(&mut terminal);
         tui::restore(&mut terminal)?;
-        app_result?;
+        result?;
 
         Ok(())
     }
@@ -100,7 +98,6 @@ impl Engine for ShowEngine {
 struct App {
     conn: PooledConnection<SqliteConnectionManager>,
 
-    key_event: Option<KeyEvent>,
     exit: bool,
     show_help_dialog: bool,
 
@@ -144,7 +141,6 @@ impl App {
         Ok(App {
             conn,
 
-            key_event: None,
             exit: false,
             show_help_dialog: false,
 
@@ -163,160 +159,120 @@ impl App {
     }
 
     /// runs the application's main loop until the user quits
-    fn run(&mut self, terminal: &mut tui::Tui) -> io::Result<()> {
+    fn run(&mut self, terminal: &mut tui::Tui) -> eyre::Result<()> {
         while !self.exit {
-            terminal.draw(|frame| self.render_frame(frame))?;
+            terminal.draw(|frame| frame.render_widget(&mut *self, frame.area()))?;
             self.handle_events()?;
         }
         Ok(())
     }
 
-    fn render_frame(&mut self, frame: &mut Frame) {
-        frame.render_widget(self, frame.area())
-    }
-
-    fn handle_events(&mut self) -> io::Result<()> {
+    fn handle_events(&mut self) -> eyre::Result<()> {
         // Add a small timeout to the event polling to ensure that the UI
         // remains responsive regardless of whether there are events pending
         // (16ms is ~60fps).
-        if event::poll(std::time::Duration::from_millis(16))? {
-            match event::read()? {
-                event::Event::Key(key_event) => {
-                    self.handle_key_event(key_event);
-                }
-                _ => {
-                    self.key_event = None;
-                }
+        if !event::poll(std::time::Duration::from_millis(16))? {
+            return Ok(());
+        }
+
+        if let event::Event::Key(key_event) = event::read()? {
+            if key_event.kind != KeyEventKind::Press {
+                return Ok(());
             }
-        } else {
-            self.key_event = None;
+
+            match key_event.code {
+                KeyCode::Char('q') => {
+                    self.exit = true;
+                }
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.habit_list_state.select_next();
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.habit_list_state.select_previous();
+                }
+                KeyCode::Char('g') | KeyCode::Home => {
+                    self.habit_list_state.select_first();
+                }
+                KeyCode::Char('G') | KeyCode::End => {
+                    self.habit_list_state.select_last();
+                }
+                KeyCode::Char('h') | KeyCode::Left => {
+                    self.year -= 1;
+
+                    debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                    self.calendar.update_to_habit_and_year(
+                        &self.habits[self.selected_habit_idx],
+                        self.year,
+                    )?;
+
+                    self.n_reps_for_year = db::habit_get_n_logs_for_year(
+                        &self.conn,
+                        &self.habits[self.selected_habit_idx].name,
+                        self.year,
+                    )?;
+                }
+                KeyCode::Char('l') | KeyCode::Right => {
+                    self.year += 1;
+
+                    debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                    self.calendar.update_to_habit_and_year(
+                        &self.habits[self.selected_habit_idx],
+                        self.year,
+                    )?;
+
+                    self.n_reps_for_year = db::habit_get_n_logs_for_year(
+                        &self.conn,
+                        &self.habits[self.selected_habit_idx].name,
+                        self.year,
+                    )?;
+                }
+                KeyCode::Char('o') => {
+                    self.year = self.cur_year;
+
+                    debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                    self.calendar.update_to_habit_and_year(
+                        &self.habits[self.selected_habit_idx],
+                        self.year,
+                    )?;
+
+                    self.n_reps_for_year = db::habit_get_n_logs_for_year(
+                        &self.conn,
+                        &self.habits[self.selected_habit_idx].name,
+                        self.year,
+                    )?;
+                }
+                KeyCode::Enter => {
+                    self.selected_habit_idx = self
+                        .habit_list_state
+                        .selected()
+                        .expect("There should always be a habit selected.");
+
+                    self.calendar
+                        .update_to_habit(&self.habits[self.selected_habit_idx])?;
+
+                    self.n_reps_total = db::habit_get_n_logs(
+                        &self.conn,
+                        &self.habits[self.selected_habit_idx].name,
+                    )?;
+                    self.n_reps_for_year = db::habit_get_n_logs_for_year(
+                        &self.conn,
+                        &self.habits[self.selected_habit_idx].name,
+                        self.year,
+                    )?;
+                }
+                KeyCode::Char('?') => {
+                    self.show_help_dialog = !self.show_help_dialog;
+                }
+                _ => {}
+            }
         }
 
         Ok(())
-    }
-
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
-        if key_event.kind == KeyEventKind::Press {
-            match key_event.code {
-                KeyCode::Char('q') => self.exit(),
-                _ => {
-                    self.key_event = Some(key_event);
-                }
-            }
-        } else {
-            self.key_event = Some(key_event);
-        }
-    }
-
-    fn exit(&mut self) {
-        self.exit = true;
     }
 }
 
 impl Widget for &mut App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        // Keyboard input
-        // --------------
-
-        if let Some(key_event) = self.key_event {
-            if key_event.kind == KeyEventKind::Press {
-                match key_event.code {
-                    KeyCode::Char('j') | KeyCode::Down => {
-                        self.habit_list_state.select_next();
-                    }
-                    KeyCode::Char('k') | KeyCode::Up => {
-                        self.habit_list_state.select_previous();
-                    }
-                    KeyCode::Char('g') | KeyCode::Home => {
-                        self.habit_list_state.select_first();
-                    }
-                    KeyCode::Char('G') | KeyCode::End => {
-                        self.habit_list_state.select_last();
-                    }
-                    KeyCode::Char('h') | KeyCode::Left => {
-                        self.year -= 1;
-
-                        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                        self.calendar
-                            .update_to_habit_and_year(
-                                &self.habits[self.selected_habit_idx],
-                                self.year,
-                            )
-                            .unwrap();
-
-                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
-                            &self.conn,
-                            &self.habits[self.selected_habit_idx].name,
-                            self.year,
-                        )
-                        .unwrap();
-                    }
-                    KeyCode::Char('l') | KeyCode::Right => {
-                        self.year += 1;
-
-                        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                        self.calendar
-                            .update_to_habit_and_year(
-                                &self.habits[self.selected_habit_idx],
-                                self.year,
-                            )
-                            .unwrap();
-
-                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
-                            &self.conn,
-                            &self.habits[self.selected_habit_idx].name,
-                            self.year,
-                        )
-                        .unwrap();
-                    }
-                    KeyCode::Char('o') => {
-                        self.year = self.cur_year;
-
-                        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                        self.calendar
-                            .update_to_habit_and_year(
-                                &self.habits[self.selected_habit_idx],
-                                self.year,
-                            )
-                            .unwrap();
-
-                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
-                            &self.conn,
-                            &self.habits[self.selected_habit_idx].name,
-                            self.year,
-                        )
-                        .unwrap();
-                    }
-                    KeyCode::Enter => {
-                        self.selected_habit_idx = self
-                            .habit_list_state
-                            .selected()
-                            .expect("There should always be a habit selected.");
-
-                        self.calendar
-                            .update_to_habit(&self.habits[self.selected_habit_idx])
-                            .unwrap();
-
-                        self.n_reps_total = db::habit_get_n_logs(
-                            &self.conn,
-                            &self.habits[self.selected_habit_idx].name,
-                        )
-                        .unwrap();
-                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
-                            &self.conn,
-                            &self.habits[self.selected_habit_idx].name,
-                            self.year,
-                        )
-                        .unwrap();
-                    }
-                    KeyCode::Char('?') => {
-                        self.show_help_dialog = !self.show_help_dialog;
-                    }
-                    _ => {}
-                }
-            }
-        }
-
         debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
         let selected_habit = &self.habits[self.selected_habit_idx];
 
