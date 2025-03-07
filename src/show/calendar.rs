@@ -77,7 +77,7 @@ impl Calendar {
             today,
             today_year,
 
-            year: today_year,
+            year: 0,
             start_idx: 0,
             today_idx: 0,
             end_idx: 0,
@@ -88,29 +88,9 @@ impl Calendar {
         calendar
     }
 
-    pub fn get_year(&self) -> i32 {
-        self.year
-    }
-
     pub fn update_to_habit_and_year(&mut self, habit: &Habit, year: i32) -> eyre::Result<()> {
         self.update_days_mat_to_year(year);
         self.update_days_mat_to_habit(habit)
-    }
-
-    pub fn update_to_cur_year(&mut self, habit: &Habit) -> eyre::Result<()> {
-        if self.year == self.today_year {
-            return Ok(());
-        }
-
-        self.update_to_habit_and_year(habit, self.today_year)
-    }
-
-    pub fn update_to_next_year(&mut self, habit: &Habit) -> eyre::Result<()> {
-        self.update_to_habit_and_year(habit, self.year + 1)
-    }
-
-    pub fn update_to_prev_year(&mut self, habit: &Habit) -> eyre::Result<()> {
-        self.update_to_habit_and_year(habit, self.year - 1)
     }
 
     pub fn update_to_habit(&mut self, habit: &Habit) -> eyre::Result<()> {

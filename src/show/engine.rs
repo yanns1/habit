@@ -5,6 +5,8 @@ use crate::show::calendar::Calendar;
 use crate::show::cli::ShowCli;
 use crate::tui;
 use crate::utils;
+use chrono::Datelike;
+use chrono::Local;
 use eyre::eyre;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -110,6 +112,7 @@ struct App {
     selected_habit_idx: usize,
 
     year: i32,
+    cur_year: i32,
     n_reps_for_year: usize,
     n_reps_total: usize,
 }
@@ -130,13 +133,13 @@ impl App {
         let mut habit_list_state = ListState::default();
         habit_list_state.select(Some(selected_habit_idx));
 
-        let mut calendar = Calendar::new();
-        calendar.update_to_habit(&habits[selected_habit_idx])?;
-
-        let year = calendar.get_year();
+        let cur_year = Local::now().year();
         let n_reps_for_year =
-            db::habit_get_n_logs_for_year(&conn, &habits[selected_habit_idx].name, year)?;
+            db::habit_get_n_logs_for_year(&conn, &habits[selected_habit_idx].name, cur_year)?;
         let n_reps_total = db::habit_get_n_logs(&conn, &habits[selected_habit_idx].name)?;
+
+        let mut calendar = Calendar::new();
+        calendar.update_to_habit_and_year(&habits[selected_habit_idx], cur_year)?;
 
         Ok(App {
             conn,
@@ -152,7 +155,8 @@ impl App {
             habit_list_state,
             selected_habit_idx,
 
-            year,
+            year: cur_year,
+            cur_year,
             n_reps_for_year,
             n_reps_total,
         })
@@ -230,12 +234,16 @@ impl Widget for &mut App {
                         self.habit_list_state.select_last();
                     }
                     KeyCode::Char('h') | KeyCode::Left => {
+                        self.year -= 1;
+
                         debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
                         self.calendar
-                            .update_to_prev_year(&self.habits[self.selected_habit_idx])
+                            .update_to_habit_and_year(
+                                &self.habits[self.selected_habit_idx],
+                                self.year,
+                            )
                             .unwrap();
 
-                        self.year = self.calendar.get_year();
                         self.n_reps_for_year = db::habit_get_n_logs_for_year(
                             &self.conn,
                             &self.habits[self.selected_habit_idx].name,
@@ -244,12 +252,16 @@ impl Widget for &mut App {
                         .unwrap();
                     }
                     KeyCode::Char('l') | KeyCode::Right => {
+                        self.year += 1;
+
                         debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
                         self.calendar
-                            .update_to_next_year(&self.habits[self.selected_habit_idx])
+                            .update_to_habit_and_year(
+                                &self.habits[self.selected_habit_idx],
+                                self.year,
+                            )
                             .unwrap();
 
-                        self.year = self.calendar.get_year();
                         self.n_reps_for_year = db::habit_get_n_logs_for_year(
                             &self.conn,
                             &self.habits[self.selected_habit_idx].name,
@@ -258,12 +270,16 @@ impl Widget for &mut App {
                         .unwrap();
                     }
                     KeyCode::Char('o') => {
+                        self.year = self.cur_year;
+
                         debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
                         self.calendar
-                            .update_to_cur_year(&self.habits[self.selected_habit_idx])
+                            .update_to_habit_and_year(
+                                &self.habits[self.selected_habit_idx],
+                                self.year,
+                            )
                             .unwrap();
 
-                        self.year = self.calendar.get_year();
                         self.n_reps_for_year = db::habit_get_n_logs_for_year(
                             &self.conn,
                             &self.habits[self.selected_habit_idx].name,
