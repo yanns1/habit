@@ -108,6 +108,10 @@ struct App {
     habit_names: Vec<String>,
     habit_list_state: ListState,
     selected_habit_idx: usize,
+
+    year: i32,
+    n_reps_for_year: usize,
+    n_reps_total: usize,
 }
 
 impl App {
@@ -129,6 +133,11 @@ impl App {
         let mut heatmap = HeatMap::new();
         heatmap.update_to_habit(&habits[selected_habit_idx])?;
 
+        let year = heatmap.get_year();
+        let n_reps_for_year =
+            db::habit_get_n_logs_for_year(&conn, &habits[selected_habit_idx].name, year)?;
+        let n_reps_total = db::habit_get_n_logs(&conn, &habits[selected_habit_idx].name)?;
+
         Ok(App {
             conn,
 
@@ -142,6 +151,10 @@ impl App {
             habit_names,
             habit_list_state,
             selected_habit_idx,
+
+            year,
+            n_reps_for_year,
+            n_reps_total,
         })
     }
 
@@ -221,27 +234,64 @@ impl Widget for &mut App {
                         self.heatmap
                             .update_to_prev_year(&self.habits[self.selected_habit_idx])
                             .unwrap();
+
+                        self.year = self.heatmap.get_year();
+                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
+                            &self.conn,
+                            &self.habits[self.selected_habit_idx].name,
+                            self.year,
+                        )
+                        .unwrap();
                     }
                     KeyCode::Char('l') | KeyCode::Right => {
                         debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
                         self.heatmap
                             .update_to_next_year(&self.habits[self.selected_habit_idx])
                             .unwrap();
+
+                        self.year = self.heatmap.get_year();
+                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
+                            &self.conn,
+                            &self.habits[self.selected_habit_idx].name,
+                            self.year,
+                        )
+                        .unwrap();
                     }
                     KeyCode::Char('o') => {
                         debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
                         self.heatmap
                             .update_to_cur_year(&self.habits[self.selected_habit_idx])
                             .unwrap();
+
+                        self.year = self.heatmap.get_year();
+                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
+                            &self.conn,
+                            &self.habits[self.selected_habit_idx].name,
+                            self.year,
+                        )
+                        .unwrap();
                     }
                     KeyCode::Enter => {
                         self.selected_habit_idx = self
                             .habit_list_state
                             .selected()
                             .expect("There should always be a habit selected.");
+
                         self.heatmap
                             .update_to_habit(&self.habits[self.selected_habit_idx])
                             .unwrap();
+
+                        self.n_reps_total = db::habit_get_n_logs(
+                            &self.conn,
+                            &self.habits[self.selected_habit_idx].name,
+                        )
+                        .unwrap();
+                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
+                            &self.conn,
+                            &self.habits[self.selected_habit_idx].name,
+                            self.year,
+                        )
+                        .unwrap();
                     }
                     KeyCode::Char('?') => {
                         self.show_help_dialog = !self.show_help_dialog;
@@ -328,25 +378,25 @@ impl Widget for &mut App {
             .highlight_spacing(HighlightSpacing::Always);
 
         // Summary paragraph
-        let year = self.heatmap.get_year();
-        let n_reps_for_year =
-            db::habit_get_n_logs_for_year(&self.conn, &selected_habit.name, year).unwrap();
-        let n_reps_total = db::habit_get_n_logs(&self.conn, &selected_habit.name).unwrap();
         let summary_lines = vec![
             Line::from(vec![
-                Span::from(format!("In {}, you have completed ", year)),
+                Span::from(format!("In {}, you have completed ", self.year)),
                 Span::styled(
                     format!(
                         "{} {}",
-                        n_reps_for_year,
-                        if n_reps_for_year <= 1 { "rep" } else { "reps" }
+                        self.n_reps_for_year,
+                        if self.n_reps_for_year <= 1 {
+                            "rep"
+                        } else {
+                            "reps"
+                        }
                     ),
                     Style::new().bold(),
                 ),
                 Span::from(format!(
                     " for habit '{}'. {}",
                     selected_habit.name,
-                    if n_reps_for_year > 0 {
+                    if self.n_reps_for_year > 0 {
                         "Congratulations!"
                     } else {
                         ""
@@ -358,8 +408,12 @@ impl Widget for &mut App {
                 Span::styled(
                     format!(
                         "{} {}",
-                        n_reps_total,
-                        if n_reps_total <= 1 { "rep" } else { "reps" }
+                        self.n_reps_total,
+                        if self.n_reps_total <= 1 {
+                            "rep"
+                        } else {
+                            "reps"
+                        }
                     ),
                     Style::new().bold(),
                 ),
