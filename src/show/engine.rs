@@ -227,38 +227,45 @@ impl App {
                     )?;
                 }
                 KeyCode::Char('o') => {
-                    self.year = self.cur_year;
+                    if self.year != self.cur_year {
+                        self.year = self.cur_year;
 
-                    debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                    self.calendar.update_to_habit_and_year(
-                        &self.habits[self.selected_habit_idx],
-                        self.year,
-                    )?;
+                        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                        self.calendar.update_to_habit_and_year(
+                            &self.habits[self.selected_habit_idx],
+                            self.year,
+                        )?;
 
-                    self.n_reps_for_year = db::habit_get_n_logs_for_year(
-                        &self.conn,
-                        &self.habits[self.selected_habit_idx].name,
-                        self.year,
-                    )?;
+                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
+                            &self.conn,
+                            &self.habits[self.selected_habit_idx].name,
+                            self.year,
+                        )?;
+                    }
                 }
                 KeyCode::Enter => {
-                    self.selected_habit_idx = self
+                    let prev_selected_habit_idx = self.selected_habit_idx;
+                    let new_selected_habit_idx = self
                         .habit_list_state
                         .selected()
                         .expect("There should always be a habit selected.");
 
-                    self.calendar
-                        .update_to_habit(&self.habits[self.selected_habit_idx])?;
+                    if new_selected_habit_idx != prev_selected_habit_idx {
+                        self.selected_habit_idx = new_selected_habit_idx;
 
-                    self.n_reps_total = db::habit_get_n_logs(
-                        &self.conn,
-                        &self.habits[self.selected_habit_idx].name,
-                    )?;
-                    self.n_reps_for_year = db::habit_get_n_logs_for_year(
-                        &self.conn,
-                        &self.habits[self.selected_habit_idx].name,
-                        self.year,
-                    )?;
+                        self.calendar
+                            .update_to_habit(&self.habits[self.selected_habit_idx])?;
+
+                        self.n_reps_total = db::habit_get_n_logs(
+                            &self.conn,
+                            &self.habits[self.selected_habit_idx].name,
+                        )?;
+                        self.n_reps_for_year = db::habit_get_n_logs_for_year(
+                            &self.conn,
+                            &self.habits[self.selected_habit_idx].name,
+                            self.year,
+                        )?;
+                    }
                 }
                 KeyCode::Char('?') => {
                     self.show_help_dialog = !self.show_help_dialog;
