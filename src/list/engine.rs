@@ -15,7 +15,7 @@ struct ListEngine {
 }
 
 impl Engine for ListEngine {
-    fn run(&mut self) -> anyhow::Result<()> {
+    fn run(&mut self) -> eyre::Result<()> {
         let conn = db::get_conn!();
 
         if self.verbose {

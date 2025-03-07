@@ -1,7 +1,7 @@
 use crate::db;
 use crate::engine::Engine;
 use crate::suspend::cli::SuspendCli;
-use anyhow::anyhow;
+use eyre::eyre;
 
 pub fn get_engine(cli: SuspendCli) -> Box<dyn Engine> {
     Box::new(SuspendEngine { habit: cli.habit })
@@ -12,12 +12,12 @@ struct SuspendEngine {
 }
 
 impl Engine for SuspendEngine {
-    fn run(&mut self) -> anyhow::Result<()> {
+    fn run(&mut self) -> eyre::Result<()> {
         let conn = db::get_conn!();
 
         // Check if habit exists.
         if !db::habit_exists(&conn, &self.habit)? {
-            return Err(anyhow!("Habit '{}' does not exist!", self.habit));
+            return Err(eyre!("Habit '{}' does not exist!", self.habit));
         }
 
         // Check if habit is already suspended.

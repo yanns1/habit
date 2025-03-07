@@ -12,7 +12,7 @@ pub fn get_engine(cli: NewCli) -> Box<dyn Engine> {
 struct NewEngine {}
 
 impl Engine for NewEngine {
-    fn run(&mut self) -> anyhow::Result<()> {
+    fn run(&mut self) -> eyre::Result<()> {
         // ask habit info
         let name = prompt::prompt_habit_name()?;
         let description = prompt::prompt_habit_description()?;

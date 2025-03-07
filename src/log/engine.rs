@@ -1,8 +1,8 @@
 use crate::db;
 use crate::engine::Engine;
 use crate::log::cli::LogCli;
-use anyhow::anyhow;
 use colored::Colorize;
+use eyre::eyre;
 
 pub fn get_engine(cli: LogCli) -> Box<dyn Engine> {
     Box::new(LogEngine { habit: cli.habit })
@@ -13,12 +13,12 @@ struct LogEngine {
 }
 
 impl Engine for LogEngine {
-    fn run(&mut self) -> anyhow::Result<()> {
+    fn run(&mut self) -> eyre::Result<()> {
         let conn = db::get_conn!();
 
         // Check if habit exists.
         if !db::habit_exists(&conn, &self.habit)? {
-            return Err(anyhow!("Habit '{}' does not exist!", self.habit));
+            return Err(eyre!("Habit '{}' does not exist!", self.habit));
         }
 
         // Check if habit is suspended.

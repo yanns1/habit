@@ -3,11 +3,11 @@ use crate::habit::At;
 use crate::habit::Day;
 use crate::habit::Habit;
 use crate::paths::DB_PATH;
-use anyhow::anyhow;
-use anyhow::Context;
 use chrono::DateTime;
 use chrono::Local;
 use chrono::TimeZone;
+use eyre::eyre;
+use eyre::WrapErr;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
@@ -90,7 +90,7 @@ use std::sync::LazyLock;
 // This basically means we would not take advantage of the concurrency of
 // the database. But this application is single-threaded, so that should
 // work, right!? Not always, there can be a kind of deadlock. If a function
-// `f1 locks the connection, then calls a function `f2` which also tries
+// `f1` locks the connection, then calls a function `f2` which also tries
 // to lock the connection, `f2` will hang forever, as showcased
 // [here](https://users.rust-lang.org/t/how-to-use-mutex-correctly-between-functions/55071).
 // This is because `Mutex` is unlocked by its destructor, at the end of the scope.
@@ -145,7 +145,7 @@ macro_rules! get_conn {
 // however.
 pub(crate) use get_conn;
 
-pub fn create_tables(conn: &Connection) -> anyhow::Result<()> {
+pub fn create_tables(conn: &Connection) -> eyre::Result<()> {
     // Use an integer for storing days. Only seven bits are actually useful, one per day.
     // A day's bit should be 1 if it is included, 0 otherwise.
     // -----
@@ -199,21 +199,21 @@ pub fn create_tables(conn: &Connection) -> anyhow::Result<()> {
         COMMIT;
         ",
     )
-    .with_context(|| "Failed to create tables.")?;
+    .wrap_err("Failed to create tables.")?;
 
     Ok(())
 }
 
-pub fn habit_table_is_empty(conn: &Connection) -> anyhow::Result<bool> {
+pub fn habit_table_is_empty(conn: &Connection) -> eyre::Result<bool> {
     conn.query_row(
         "SELECT CASE WHEN EXISTS(SELECT 1 FROM Habit) THEN 0 ELSE 1 END",
         [],
         |row| row.get::<_, bool>(0),
     )
-    .with_context(|| "Failed to check if Habit table is empty.")
+    .wrap_err("Failed to check if Habit table is empty.")
 }
 
-pub fn habit_insert(conn: &Connection, habit: &Habit) -> anyhow::Result<()> {
+pub fn habit_insert(conn: &Connection, habit: &Habit) -> eyre::Result<()> {
     // Query the current max id to have the new be one more.
     // This can be slow if there are many habits. It is reasonable to
     // assume that there will never be enough in practice to actually make
@@ -229,7 +229,7 @@ pub fn habit_insert(conn: &Connection, habit: &Habit) -> anyhow::Result<()> {
         conn.query_row("SELECT MAX(id) FROM Habit", [], |row| {
             row.get::<_, usize>(0).map(|id| id + 1)
         })
-        .with_context(|| "Query to select max id of Habit failed.")?
+        .wrap_err("Query to select max id of Habit failed.")?
     };
 
     let byte = habit::days_to_byte(&habit.days[..]);
@@ -249,13 +249,13 @@ pub fn habit_insert(conn: &Connection, habit: &Habit) -> anyhow::Result<()> {
             created_at_timestamp,
         ],
     )
-    .with_context(|| format!("Failed to insert '({}, {}, {}, {}, {}, {}, {}, {})' into Habit.", id,
+    .wrap_err(format!("Failed to insert '({}, {}, {}, {}, {}, {}, {}, {})' into Habit.", id,
         habit.name, habit.description, byte, habit.at.hour, habit.at.minutes, habit.suspended, created_at_timestamp))?;
 
     Ok(())
 }
 
-fn habit_write_history(conn: &Connection, habit_name: &str) -> anyhow::Result<()> {
+fn habit_write_history(conn: &Connection, habit_name: &str) -> eyre::Result<()> {
     let (id, name, description, days, hour, minutes, suspended, created_at_timestamp) = conn
         .query_row(
             "SELECT id, name, description, days, hour, minutes, suspended, created_at FROM Habit WHERE name = ?1",
@@ -272,37 +272,31 @@ fn habit_write_history(conn: &Connection, habit_name: &str) -> anyhow::Result<()
                 Ok((id, name, description, days, hour, minutes, suspended, created_at_timestamp))
             },
         )
-        .with_context(|| format!("Failed to select Habit with name '{}'.", habit_name))?;
+        .wrap_err(format!("Failed to select Habit with name '{}'.", habit_name))?;
 
     let recorded_at_timestamp = chrono::Local::now().timestamp();
     conn.execute(
         "INSERT INTO HabitHistory (habit_id, name, description, days, hour, minutes, suspended, created_at, recorded_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![id, name, description, days, hour, minutes, suspended, created_at_timestamp, recorded_at_timestamp]
-    ).with_context(|| {
+    ).wrap_err(
         format!("Failed to insert '({}, {}, {}, {}, {}, {}, {}, {}, {})' into HabitHistory.",
             id, name, description, days, hour, minutes, suspended, created_at_timestamp, recorded_at_timestamp)
-    })?;
+    )?;
 
     Ok(())
 }
 
-pub fn habit_update_name(
-    conn: &Connection,
-    habit_name: &str,
-    new_name: &str,
-) -> anyhow::Result<()> {
+pub fn habit_update_name(conn: &Connection, habit_name: &str, new_name: &str) -> eyre::Result<()> {
     habit_write_history(conn, habit_name)?;
 
     conn.execute(
         "UPDATE Habit SET name = ?1 WHERE name = ?2",
         rusqlite::params![new_name, habit_name],
     )
-    .with_context(|| {
-        format!(
-            "Failed to update name of habit '{}' to '{}'.",
-            habit_name, new_name
-        )
-    })?;
+    .wrap_err(format!(
+        "Failed to update name of habit '{}' to '{}'.",
+        habit_name, new_name
+    ))?;
 
     Ok(())
 }
@@ -311,19 +305,17 @@ pub fn habit_update_description(
     conn: &Connection,
     habit_name: &str,
     new_description: &str,
-) -> anyhow::Result<()> {
+) -> eyre::Result<()> {
     habit_write_history(conn, habit_name)?;
 
     conn.execute(
         "UPDATE Habit SET description = ?1 WHERE name = ?2",
         rusqlite::params![new_description, habit_name],
     )
-    .with_context(|| {
-        format!(
-            "Failed to update description of Habit '{}', to '{}'.",
-            habit_name, new_description
-        )
-    })?;
+    .wrap_err(format!(
+        "Failed to update description of Habit '{}', to '{}'.",
+        habit_name, new_description
+    ))?;
 
     Ok(())
 }
@@ -332,7 +324,7 @@ pub fn habit_update_days(
     conn: &Connection,
     habit_name: &str,
     new_days: &[Day],
-) -> anyhow::Result<()> {
+) -> eyre::Result<()> {
     habit_write_history(conn, habit_name)?;
 
     let byte = habit::days_to_byte(new_days);
@@ -340,29 +332,25 @@ pub fn habit_update_days(
         "UPDATE Habit SET days = ?1 WHERE name = ?2",
         rusqlite::params![byte, habit_name],
     )
-    .with_context(|| {
-        format!(
-            "Failed to update days of Habit '{}', to '{}'.",
-            habit_name, byte
-        )
-    })?;
+    .wrap_err(format!(
+        "Failed to update days of Habit '{}', to '{}'.",
+        habit_name, byte
+    ))?;
 
     Ok(())
 }
 
-pub fn habit_update_at(conn: &Connection, habit_name: &str, new_at: &At) -> anyhow::Result<()> {
+pub fn habit_update_at(conn: &Connection, habit_name: &str, new_at: &At) -> eyre::Result<()> {
     habit_write_history(conn, habit_name)?;
 
     conn.execute(
         "UPDATE Habit SET hour = ?1, minutes = ?2 WHERE name = ?3",
         rusqlite::params![new_at.hour, new_at.minutes, habit_name],
     )
-    .with_context(|| {
-        format!(
-            "Failed to update at of Habit '{}', to '{}'.",
-            habit_name, new_at
-        )
-    })?;
+    .wrap_err(format!(
+        "Failed to update at of Habit '{}', to '{}'.",
+        habit_name, new_at
+    ))?;
 
     Ok(())
 }
@@ -371,24 +359,22 @@ pub fn habit_update_suspended(
     conn: &Connection,
     habit_name: &str,
     new_suspended: bool,
-) -> anyhow::Result<()> {
+) -> eyre::Result<()> {
     habit_write_history(conn, habit_name)?;
 
     conn.execute(
         "UPDATE Habit SET suspended = ?1 WHERE name = ?2",
         rusqlite::params![new_suspended, habit_name],
     )
-    .with_context(|| {
-        format!(
-            "Failed to update suspended of Habit '{}', to '{}'.",
-            habit_name, new_suspended
-        )
-    })?;
+    .wrap_err(format!(
+        "Failed to update suspended of Habit '{}', to '{}'.",
+        habit_name, new_suspended
+    ))?;
 
     Ok(())
 }
 
-pub fn habit_exists(conn: &Connection, habit_name: &str) -> anyhow::Result<bool> {
+pub fn habit_exists(conn: &Connection, habit_name: &str) -> eyre::Result<bool> {
     match conn.query_row(
         "SELECT name FROM Habit WHERE name = ?1",
         rusqlite::params![habit_name],
@@ -396,7 +382,7 @@ pub fn habit_exists(conn: &Connection, habit_name: &str) -> anyhow::Result<bool>
     ) {
         Ok(_) => Ok(true),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
-        Err(e) => Err(anyhow!(
+        Err(e) => Err(eyre!(
             "Query to select habit with name '{}' failed.\n{}",
             habit_name,
             e
@@ -404,36 +390,34 @@ pub fn habit_exists(conn: &Connection, habit_name: &str) -> anyhow::Result<bool>
     }
 }
 
-pub fn habit_is_suspended(conn: &Connection, habit_name: &str) -> anyhow::Result<bool> {
+pub fn habit_is_suspended(conn: &Connection, habit_name: &str) -> eyre::Result<bool> {
     conn.query_row(
         "SELECT suspended FROM Habit WHERE name = ?1",
         rusqlite::params![habit_name],
         |row| row.get::<_, bool>(0),
     )
-    .with_context(|| {
-        format!(
-            "Failed to select suspended in Habit with name '{}'.",
-            habit_name
-        )
-    })
+    .wrap_err(format!(
+        "Failed to select suspended in Habit with name '{}'.",
+        habit_name
+    ))
 }
 
-pub fn habit_get_name_with_most_recent_log(conn: &Connection) -> anyhow::Result<String> {
+pub fn habit_get_name_with_most_recent_log(conn: &Connection) -> eyre::Result<String> {
     let habit_id = conn
         .query_row(
             "SELECT habit_id FROM Log ORDER BY created_at DESC LIMIT 1",
             (),
             |row| row.get::<_, usize>(0),
         )
-        .with_context(|| "Failed to select the name of the habit that has the most recent log.")?;
+        .wrap_err("Failed to select the name of the habit that has the most recent log.")?;
 
     habit_get_name_from_id(conn, habit_id)
 }
 
-pub fn habit_get_all(conn: &Connection) -> anyhow::Result<Vec<Habit>> {
+pub fn habit_get_all(conn: &Connection) -> eyre::Result<Vec<Habit>> {
     let mut stmt = conn
         .prepare("SELECT name, description, days, hour, minutes, suspended, created_at FROM Habit")
-        .with_context(|| "Failed to prepare 'select all habits' statement.")?;
+        .wrap_err("Failed to prepare 'select all habits' statement.")?;
 
     let rows = stmt
         .query_map([], |row| {
@@ -449,7 +433,7 @@ pub fn habit_get_all(conn: &Connection) -> anyhow::Result<Vec<Habit>> {
                 .with_timezone(&Local);
             Ok(Habit::new(name, description, days, at, suspended, Some(created_at)))
         })
-        .with_context(|| "Failed to select all habits.")?;
+        .wrap_err("Failed to select all habits.")?;
 
     let mut habits = Vec::new();
     for row in rows {
@@ -459,10 +443,10 @@ pub fn habit_get_all(conn: &Connection) -> anyhow::Result<Vec<Habit>> {
     Ok(habits)
 }
 
-pub fn habit_get_names(conn: &Connection) -> anyhow::Result<Vec<String>> {
+pub fn habit_get_names(conn: &Connection) -> eyre::Result<Vec<String>> {
     let mut stmt = conn
         .prepare("SELECT name FROM Habit")
-        .with_context(|| "Failed to prepare statement to select Habit names.")?;
+        .wrap_err("Failed to prepare statement to select Habit names.")?;
     let name_results = stmt.query_map([], |row| row.get::<_, String>(0))?;
 
     let mut names = vec![];
@@ -473,25 +457,31 @@ pub fn habit_get_names(conn: &Connection) -> anyhow::Result<Vec<String>> {
     Ok(names)
 }
 
-fn habit_get_id_from_name(conn: &Connection, habit_name: &str) -> anyhow::Result<usize> {
+fn habit_get_id_from_name(conn: &Connection, habit_name: &str) -> eyre::Result<usize> {
     conn.query_row(
         "SELECT id FROM Habit WHERE name = ?1",
         rusqlite::params![habit_name],
         |row| row.get::<_, usize>(0),
     )
-    .with_context(|| format!("Failed to select id of Habit with name '{}'.", habit_name))
+    .wrap_err(format!(
+        "Failed to select id of Habit with name '{}'.",
+        habit_name
+    ))
 }
 
-fn habit_get_name_from_id(conn: &Connection, habit_id: usize) -> anyhow::Result<String> {
+fn habit_get_name_from_id(conn: &Connection, habit_id: usize) -> eyre::Result<String> {
     conn.query_row(
         "SELECT name FROM Habit WHERE id = ?1",
         rusqlite::params![habit_id],
         |row| row.get::<_, String>(0),
     )
-    .with_context(|| format!("Failed to select name of Habit with id '{}'.", habit_id))
+    .wrap_err(format!(
+        "Failed to select name of Habit with id '{}'.",
+        habit_id
+    ))
 }
 
-pub fn habit_delete(conn: &Connection, habit_name: &str) -> anyhow::Result<()> {
+pub fn habit_delete(conn: &Connection, habit_name: &str) -> eyre::Result<()> {
     // In sqlite, need to enable foreign keys at runtime using a pragma.
     // See <https://www.sqlite.org/foreignkeys.html>.
     // In this case, this is for the deletion to cascade to Log and HabitHistory.
@@ -500,42 +490,43 @@ pub fn habit_delete(conn: &Connection, habit_name: &str) -> anyhow::Result<()> {
         "DELETE FROM Habit WHERE name = ?1",
         rusqlite::params![habit_name],
     )
-    .with_context(|| format!("Failed to delete Habit with name '{}'.", habit_name))?;
+    .wrap_err(format!(
+        "Failed to delete Habit with name '{}'.",
+        habit_name
+    ))?;
 
     Ok(())
 }
 
-pub fn log_insert(conn: &Connection, habit_name: &str) -> anyhow::Result<()> {
+pub fn log_insert(conn: &Connection, habit_name: &str) -> eyre::Result<()> {
     let habit_id = habit_get_id_from_name(conn, habit_name)?;
     conn.execute(
         "INSERT INTO Log (created_at, habit_id) VALUES (?1, ?2)",
         rusqlite::params![chrono::Local::now().timestamp(), habit_id],
     )
-    .with_context(|| "Failed to insert log into database.")?;
+    .wrap_err("Failed to insert log into database.")?;
 
     Ok(())
 }
 
-pub fn habit_get_n_logs(conn: &Connection, habit_name: &str) -> anyhow::Result<usize> {
+pub fn habit_get_n_logs(conn: &Connection, habit_name: &str) -> eyre::Result<usize> {
     let habit_id = habit_get_id_from_name(conn, habit_name)?;
     conn.query_row(
         "SELECT COUNT(1) FROM Log WHERE habit_id = ?1",
         rusqlite::params![habit_id],
         |row| row.get::<_, usize>(0),
     )
-    .with_context(|| {
-        format!(
-            "Failed to count number of logged reps for Habit '{}'.",
-            habit_name
-        )
-    })
+    .wrap_err(format!(
+        "Failed to count number of logged reps for Habit '{}'.",
+        habit_name
+    ))
 }
 
 pub fn habit_get_n_logs_for_year(
     conn: &Connection,
     habit_name: &str,
     year: i32,
-) -> anyhow::Result<usize> {
+) -> eyre::Result<usize> {
     let habit_id = habit_get_id_from_name(conn, habit_name)?;
 
     let first_second_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
@@ -550,19 +541,17 @@ pub fn habit_get_n_logs_for_year(
         ],
         |row| row.get::<_, usize>(0),
     )
-    .with_context(|| {
-        format!(
-            "Failed to count number of logged reps for Habit '{}'.",
-            habit_name
-        )
-    })
+    .wrap_err(format!(
+        "Failed to count number of logged reps for Habit '{}'.",
+        habit_name
+    ))
 }
 
 pub fn habit_get_logs_for_year(
     conn: &Connection,
     habit_name: &str,
     year: i32,
-) -> anyhow::Result<Vec<DateTime<Local>>> {
+) -> eyre::Result<Vec<DateTime<Local>>> {
     let habit_id = habit_get_id_from_name(conn, habit_name)?;
 
     let first_second_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
@@ -572,7 +561,7 @@ pub fn habit_get_logs_for_year(
         .prepare(
             "SELECT created_at FROM Log WHERE habit_id = ?1 AND (created_at BETWEEN ?2 AND ?3)",
         )
-        .with_context(|| "Failed to prepare statement in `get_logs_for_habit`.")?;
+        .wrap_err("Failed to prepare statement in `get_logs_for_habit`.")?;
 
     let rows = stmt
         .query_map(rusqlite::params![habit_id, first_second_of_year.timestamp(), last_second_of_year.timestamp()], |row| {
@@ -580,7 +569,7 @@ pub fn habit_get_logs_for_year(
             let datetime = DateTime::from_timestamp(timestamp, 0).expect("Timestamp stored in database should be that returned by DateTime::timestamp, unchanged.").with_timezone(&Local);
             Ok(datetime)
         })
-        .with_context(|| "Failed to select all logs.")?;
+        .wrap_err("Failed to select all logs.")?;
 
     let mut datetimes = Vec::new();
     for row in rows {
@@ -590,11 +579,11 @@ pub fn habit_get_logs_for_year(
     Ok(datetimes)
 }
 
-pub fn log_table_is_empty(conn: &Connection) -> anyhow::Result<bool> {
+pub fn log_table_is_empty(conn: &Connection) -> eyre::Result<bool> {
     conn.query_row(
         "SELECT CASE WHEN EXISTS(SELECT 1 FROM Log) THEN 0 ELSE 1 END",
         [],
         |row| row.get::<_, bool>(0),
     )
-    .with_context(|| "Failed to check if Log table is empty.")
+    .wrap_err("Failed to check if Log table is empty.")
 }

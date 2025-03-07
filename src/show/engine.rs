@@ -5,7 +5,7 @@ use crate::show::cli::ShowCli;
 use crate::show::heatmap::HeatMap;
 use crate::tui;
 use crate::utils;
-use anyhow::anyhow;
+use eyre::eyre;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
 use ratatui::buffer::Buffer;
@@ -48,13 +48,13 @@ struct ShowEngine {
 }
 
 impl Engine for ShowEngine {
-    fn run(&mut self) -> anyhow::Result<()> {
+    fn run(&mut self) -> eyre::Result<()> {
         let conn = db::get_conn!();
 
         // Check if habit exists in db, if not error.
         if let Some(ref habit_name) = self.habit {
             if !db::habit_exists(&conn, habit_name)? {
-                return Err(anyhow!("Habit '{}' does not exist!", habit_name));
+                return Err(eyre!("Habit '{}' does not exist!", habit_name));
             }
         }
 
@@ -115,7 +115,7 @@ impl App {
         conn: PooledConnection<SqliteConnectionManager>,
         habits: Vec<Habit>,
         selected_habit_idx: usize,
-    ) -> anyhow::Result<Self> {
+    ) -> eyre::Result<Self> {
         debug_assert!((0..habits.len()).contains(&selected_habit_idx));
 
         let habit_names = habits

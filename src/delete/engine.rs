@@ -2,7 +2,7 @@ use crate::db;
 use crate::delete::cli::DeleteCli;
 use crate::engine::Engine;
 use crate::prompt;
-use anyhow::anyhow;
+use eyre::eyre;
 
 pub fn get_engine(cli: DeleteCli) -> Box<dyn Engine> {
     Box::new(DeleteEngine { habit: cli.habit })
@@ -13,12 +13,12 @@ struct DeleteEngine {
 }
 
 impl Engine for DeleteEngine {
-    fn run(&mut self) -> anyhow::Result<()> {
+    fn run(&mut self) -> eyre::Result<()> {
         let conn = db::get_conn!();
 
         // check if habit exists in db, if not error
         if !db::habit_exists(&conn, &self.habit)? {
-            return Err(anyhow!("Habit '{}' does not exist!", self.habit));
+            return Err(eyre!("Habit '{}' does not exist!", self.habit));
         }
 
         // ask for confirmation

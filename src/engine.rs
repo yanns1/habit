@@ -9,7 +9,7 @@ use crate::show;
 use crate::suspend;
 
 pub trait Engine {
-    fn run(&mut self) -> anyhow::Result<()>;
+    fn run(&mut self) -> eyre::Result<()>;
 }
 
 pub fn get_engine(cli: cli::Cli) -> Box<dyn Engine> {

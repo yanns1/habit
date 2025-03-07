@@ -92,12 +92,12 @@ impl HeatMap {
         self.year
     }
 
-    pub fn update_to_habit_and_year(&mut self, habit: &Habit, year: i32) -> anyhow::Result<()> {
+    pub fn update_to_habit_and_year(&mut self, habit: &Habit, year: i32) -> eyre::Result<()> {
         self.update_days_mat_to_year(year);
         self.update_days_mat_to_habit(habit)
     }
 
-    pub fn update_to_cur_year(&mut self, habit: &Habit) -> anyhow::Result<()> {
+    pub fn update_to_cur_year(&mut self, habit: &Habit) -> eyre::Result<()> {
         if self.year == self.today_year {
             return Ok(());
         }
@@ -105,15 +105,15 @@ impl HeatMap {
         self.update_to_habit_and_year(habit, self.today_year)
     }
 
-    pub fn update_to_next_year(&mut self, habit: &Habit) -> anyhow::Result<()> {
+    pub fn update_to_next_year(&mut self, habit: &Habit) -> eyre::Result<()> {
         self.update_to_habit_and_year(habit, self.year + 1)
     }
 
-    pub fn update_to_prev_year(&mut self, habit: &Habit) -> anyhow::Result<()> {
+    pub fn update_to_prev_year(&mut self, habit: &Habit) -> eyre::Result<()> {
         self.update_to_habit_and_year(habit, self.year - 1)
     }
 
-    pub fn update_to_habit(&mut self, habit: &Habit) -> anyhow::Result<()> {
+    pub fn update_to_habit(&mut self, habit: &Habit) -> eyre::Result<()> {
         self.update_days_mat_to_habit(habit)
     }
 
@@ -162,7 +162,7 @@ impl HeatMap {
 
     /// Should be called _after_ `update_days_mat_to_year` has been called, otherwise
     /// fields will not be properly set.
-    fn update_days_mat_to_habit(&mut self, habit: &Habit) -> anyhow::Result<()> {
+    fn update_days_mat_to_habit(&mut self, habit: &Habit) -> eyre::Result<()> {
         if self.year > self.today_year {
             return Ok(());
         }

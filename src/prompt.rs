@@ -2,11 +2,11 @@ use crate::db;
 use crate::habit::At;
 use crate::habit::Day;
 use crate::habit::ParseAtError;
-use anyhow::Context;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Confirm;
 use dialoguer::Input;
 use dialoguer::MultiSelect;
+use eyre::WrapErr;
 use std::str::FromStr;
 
 const DAYS: [Day; 7] = [
@@ -19,7 +19,7 @@ const DAYS: [Day; 7] = [
     Day::Sunday,
 ];
 
-pub fn prompt_habit_name() -> anyhow::Result<String> {
+pub fn prompt_habit_name() -> eyre::Result<String> {
     let dialoguer_theme: ColorfulTheme = ColorfulTheme::default();
 
     let name = Input::<String>::with_theme(&dialoguer_theme)
@@ -48,7 +48,7 @@ pub fn prompt_habit_name() -> anyhow::Result<String> {
     Ok(name)
 }
 
-pub fn prompt_habit_description() -> anyhow::Result<String> {
+pub fn prompt_habit_description() -> eyre::Result<String> {
     let dialoguer_theme: ColorfulTheme = ColorfulTheme::default();
 
     let description = Input::<String>::with_theme(&dialoguer_theme)
@@ -60,7 +60,7 @@ pub fn prompt_habit_description() -> anyhow::Result<String> {
     Ok(description)
 }
 
-pub fn prompt_habit_days() -> anyhow::Result<Vec<Day>> {
+pub fn prompt_habit_days() -> eyre::Result<Vec<Day>> {
     let dialoguer_theme: ColorfulTheme = ColorfulTheme::default();
 
     let days = MultiSelect::with_theme(&dialoguer_theme)
@@ -74,7 +74,7 @@ pub fn prompt_habit_days() -> anyhow::Result<Vec<Day>> {
     Ok(days)
 }
 
-pub fn prompt_habit_at() -> anyhow::Result<At> {
+pub fn prompt_habit_at() -> eyre::Result<At> {
     let dialoguer_theme: ColorfulTheme = ColorfulTheme::default();
 
     At::from_str(
@@ -86,10 +86,10 @@ pub fn prompt_habit_at() -> anyhow::Result<At> {
             .interact_text()?
             .trim(),
     )
-    .with_context(|| "Not possible if validate_with worked correctly.")
+    .wrap_err("Not possible if validate_with worked correctly.")
 }
 
-pub fn ask_for_confirmation(prompt_mess: &str) -> anyhow::Result<bool> {
+pub fn ask_for_confirmation(prompt_mess: &str) -> eyre::Result<bool> {
     let dialoguer_theme: ColorfulTheme = ColorfulTheme::default();
 
     let answer = Confirm::with_theme(&dialoguer_theme)

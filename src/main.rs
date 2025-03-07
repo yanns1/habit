@@ -2,7 +2,7 @@ use clap::Parser;
 use habit::cli::Cli;
 use habit::engine::get_engine;
 
-fn main() -> anyhow::Result<()> {
+fn main() -> eyre::Result<()> {
     let cli = Cli::parse();
 
     // Run engine.
