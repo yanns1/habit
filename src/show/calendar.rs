@@ -33,7 +33,7 @@ const HEIGHT_FOR_YEAR: u16 = 1;
 
 #[derive(Debug, Clone, Copy)]
 /// The "type" of a day, as we are concerned about when we need to know
-/// what to output in each cell of the heatmap.
+/// what to output in each cell of the calendar.
 enum DayType {
     /// A day not in the year considered, either in the previous or the next year.
     NotInYear,
@@ -46,7 +46,7 @@ enum DayType {
     ShouldHabit(bool),
 }
 
-pub struct HeatMap {
+pub struct Calendar {
     conn: Option<PooledConnection<SqliteConnectionManager>>,
 
     days_mat: Vec<DayType>,
@@ -60,7 +60,7 @@ pub struct HeatMap {
     end_idx: usize,
 }
 
-impl HeatMap {
+impl Calendar {
     pub fn new() -> Self {
         // Make a days matrix, a 7 by 53 matrix where each cell corresponds to a day of the year.
         // A cell contains the "type" of the day it corresponds to (see `DayType`).
@@ -69,7 +69,7 @@ impl HeatMap {
         let today = Local::now();
         let today_year = today.year();
 
-        let mut heatmap = HeatMap {
+        let mut calendar = Calendar {
             conn: None,
 
             days_mat,
@@ -83,9 +83,9 @@ impl HeatMap {
             end_idx: 0,
         };
 
-        heatmap.update_days_mat_to_year(today_year);
+        calendar.update_days_mat_to_year(today_year);
 
-        heatmap
+        calendar
     }
 
     pub fn get_year(&self) -> i32 {
@@ -217,13 +217,13 @@ impl HeatMap {
     }
 }
 
-impl Default for HeatMap {
+impl Default for Calendar {
     fn default() -> Self {
-        HeatMap::new()
+        Calendar::new()
     }
 }
 
-impl Widget for &mut HeatMap {
+impl Widget for &mut Calendar {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Layout
         // ------

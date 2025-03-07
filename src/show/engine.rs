@@ -1,8 +1,8 @@
 use crate::db;
 use crate::engine::Engine;
 use crate::habit::Habit;
+use crate::show::calendar::Calendar;
 use crate::show::cli::ShowCli;
-use crate::show::heatmap::HeatMap;
 use crate::tui;
 use crate::utils;
 use eyre::eyre;
@@ -102,7 +102,7 @@ struct App {
     exit: bool,
     show_help_dialog: bool,
 
-    heatmap: HeatMap,
+    calendar: Calendar,
 
     habits: Vec<Habit>,
     habit_names: Vec<String>,
@@ -130,10 +130,10 @@ impl App {
         let mut habit_list_state = ListState::default();
         habit_list_state.select(Some(selected_habit_idx));
 
-        let mut heatmap = HeatMap::new();
-        heatmap.update_to_habit(&habits[selected_habit_idx])?;
+        let mut calendar = Calendar::new();
+        calendar.update_to_habit(&habits[selected_habit_idx])?;
 
-        let year = heatmap.get_year();
+        let year = calendar.get_year();
         let n_reps_for_year =
             db::habit_get_n_logs_for_year(&conn, &habits[selected_habit_idx].name, year)?;
         let n_reps_total = db::habit_get_n_logs(&conn, &habits[selected_habit_idx].name)?;
@@ -145,7 +145,7 @@ impl App {
             exit: false,
             show_help_dialog: false,
 
-            heatmap,
+            calendar,
 
             habits,
             habit_names,
@@ -231,11 +231,11 @@ impl Widget for &mut App {
                     }
                     KeyCode::Char('h') | KeyCode::Left => {
                         debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                        self.heatmap
+                        self.calendar
                             .update_to_prev_year(&self.habits[self.selected_habit_idx])
                             .unwrap();
 
-                        self.year = self.heatmap.get_year();
+                        self.year = self.calendar.get_year();
                         self.n_reps_for_year = db::habit_get_n_logs_for_year(
                             &self.conn,
                             &self.habits[self.selected_habit_idx].name,
@@ -245,11 +245,11 @@ impl Widget for &mut App {
                     }
                     KeyCode::Char('l') | KeyCode::Right => {
                         debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                        self.heatmap
+                        self.calendar
                             .update_to_next_year(&self.habits[self.selected_habit_idx])
                             .unwrap();
 
-                        self.year = self.heatmap.get_year();
+                        self.year = self.calendar.get_year();
                         self.n_reps_for_year = db::habit_get_n_logs_for_year(
                             &self.conn,
                             &self.habits[self.selected_habit_idx].name,
@@ -259,11 +259,11 @@ impl Widget for &mut App {
                     }
                     KeyCode::Char('o') => {
                         debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                        self.heatmap
+                        self.calendar
                             .update_to_cur_year(&self.habits[self.selected_habit_idx])
                             .unwrap();
 
-                        self.year = self.heatmap.get_year();
+                        self.year = self.calendar.get_year();
                         self.n_reps_for_year = db::habit_get_n_logs_for_year(
                             &self.conn,
                             &self.habits[self.selected_habit_idx].name,
@@ -277,7 +277,7 @@ impl Widget for &mut App {
                             .selected()
                             .expect("There should always be a habit selected.");
 
-                        self.heatmap
+                        self.calendar
                             .update_to_habit(&self.habits[self.selected_habit_idx])
                             .unwrap();
 
@@ -312,7 +312,7 @@ impl Widget for &mut App {
             .constraints([Constraint::Length(10), Constraint::Fill(1)])
             .areas(area);
 
-        let [habit_details_area, heatmap_area, summary_area] = Layout::default()
+        let [habit_details_area, calendar_area, summary_area] = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Percentage(15),
@@ -429,7 +429,7 @@ impl Widget for &mut App {
 
         habit_details_para.render(habit_details_area, buf);
         StatefulWidget::render(habit_list, habit_list_area, buf, &mut self.habit_list_state);
-        self.heatmap.render(heatmap_area, buf);
+        self.calendar.render(calendar_area, buf);
         summary_para.render(summary_area, buf);
 
         if self.show_help_dialog {
