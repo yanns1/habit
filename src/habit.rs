@@ -1,6 +1,8 @@
+use crate::db;
 use crate::utils;
 use chrono::DateTime;
 use chrono::Datelike;
+use chrono::Days;
 use chrono::Local;
 use chrono::TimeZone;
 use chrono::Weekday;
@@ -131,6 +133,92 @@ impl Habit {
             // If asking habit days for after today, return 0.
             Ordering::Greater => 0,
         }
+    }
+
+    pub fn get_current_streak(&self) -> eyre::Result<u32> {
+        // TODO: Test more thoroughly.
+
+        let one_day = Days::new(1);
+        let mut habit_dt = Local::now();
+        while !self.days.contains(&habit_dt.weekday().into()) {
+            habit_dt = habit_dt - one_day;
+        }
+
+        let conn = db::get_conn!();
+        let mut current_streak = 0;
+        let mut year = Local::now().year();
+        let mut continue_streak = true;
+        while continue_streak {
+            // NOTE: Logs are expected to come out of the database sorted.
+            let log_dts = db::habit_get_logs_for_year(&conn, &self.name, year)?;
+
+            for log_dt in log_dts.iter().rev() {
+                if log_dt.year() != habit_dt.year()
+                    || log_dt.month() != habit_dt.month()
+                    || log_dt.day() != habit_dt.day()
+                {
+                    // If different day, stop current streak.
+                    continue_streak = false;
+                    break;
+                }
+
+                current_streak += 1;
+                habit_dt = habit_dt - one_day;
+                while !self.days.contains(&habit_dt.weekday().into()) {
+                    habit_dt = habit_dt - one_day;
+                }
+            }
+
+            year -= 1;
+            if year < self.created_at.year() {
+                break;
+            }
+        }
+
+        Ok(current_streak)
+    }
+
+    pub fn get_longest_streak(&self) -> eyre::Result<u32> {
+        // TODO: Test more thoroughly.
+
+        let one_day = Days::new(1);
+        let mut habit_dt = Local::now();
+        while !self.days.contains(&habit_dt.weekday().into()) {
+            habit_dt = habit_dt - one_day;
+        }
+
+        let conn = db::get_conn!();
+        let mut streaks: Vec<u32> = vec![];
+        let mut streak: u32 = 0;
+        for year in (self.created_at.year()..(Local::now().year() + 1)).rev() {
+            // NOTE: Logs are expected to come out of the database sorted.
+            let log_dts = db::habit_get_logs_for_year(&conn, &self.name, year)?;
+
+            for log_dt in log_dts.iter().rev() {
+                if log_dt.year() != habit_dt.year()
+                    || log_dt.month() != habit_dt.month()
+                    || log_dt.day() != habit_dt.day()
+                {
+                    // If different day, stop current streak and start a new one.
+                    streaks.push(streak);
+                    streak = 0;
+                } else {
+                    streak += 1;
+                    habit_dt = habit_dt - one_day;
+                    while !self.days.contains(&habit_dt.weekday().into()) {
+                        habit_dt = habit_dt - one_day;
+                    }
+                }
+            }
+        }
+
+        // Push the last streak.
+        streaks.push(streak);
+
+        Ok(*streaks
+            .iter()
+            .max()
+            .expect("There should be at least one element in `streaks`."))
     }
 }
 

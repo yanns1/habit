@@ -119,6 +119,8 @@ struct App {
     // Key is <selected_habit_idx>.
     n_reps_total: HashMap<usize, usize>,
     n_habit_days_total: HashMap<usize, usize>,
+    current_streak: HashMap<usize, u32>,
+    longest_streak: HashMap<usize, u32>,
 }
 
 impl App {
@@ -163,6 +165,18 @@ impl App {
             habits[selected_habit_idx].get_n_habit_days_since_creation(),
         );
 
+        let mut current_streak = HashMap::new();
+        current_streak.insert(
+            selected_habit_idx,
+            habits[selected_habit_idx].get_current_streak()?,
+        );
+
+        let mut longest_streak = HashMap::new();
+        longest_streak.insert(
+            selected_habit_idx,
+            habits[selected_habit_idx].get_longest_streak()?,
+        );
+
         let mut calendar = Calendar::new();
         calendar.update_to_habit_and_year(&habits[selected_habit_idx], cur_year)?;
 
@@ -186,6 +200,8 @@ impl App {
             n_habit_days_for_year,
             n_reps_total,
             n_habit_days_total,
+            current_streak,
+            longest_streak,
         })
     }
 
@@ -345,6 +361,17 @@ impl App {
                                     .get_n_habit_days_since_creation(),
                             );
                         }
+
+                        if let hash_map::Entry::Vacant(e) =
+                            self.current_streak.entry(self.selected_habit_idx)
+                        {
+                            e.insert(self.habits[self.selected_habit_idx].get_current_streak()?);
+                        }
+                        if let hash_map::Entry::Vacant(e) =
+                            self.longest_streak.entry(self.selected_habit_idx)
+                        {
+                            e.insert(self.habits[self.selected_habit_idx].get_longest_streak()?);
+                        }
                     }
                 }
                 KeyCode::Char('?') => {
@@ -472,6 +499,14 @@ impl Widget for &mut App {
             Line::from(format!(
                 "Total percentage for year: {:.1}%",
                 percentage_for_year
+            )),
+            Line::from(format!(
+                "Current streak: {}",
+                self.current_streak[&self.selected_habit_idx]
+            )),
+            Line::from(format!(
+                "Longest streak: {}",
+                self.longest_streak[&self.selected_habit_idx]
             )),
         ])
         .block(Block::bordered().title("Summary"))
