@@ -115,8 +115,10 @@ struct App {
 
     // Key is (<selected_habit_idx>, <year>).
     n_reps_for_year: HashMap<(usize, i32), usize>,
+    n_habit_days_for_year: HashMap<(usize, i32), usize>,
     // Key is <selected_habit_idx>.
     n_reps_total: HashMap<usize, usize>,
+    n_habit_days_total: HashMap<usize, usize>,
 }
 
 impl App {
@@ -143,10 +145,22 @@ impl App {
             db::habit_get_n_logs_for_year(&conn, &habits[selected_habit_idx].name, cur_year)?,
         );
 
+        let mut n_habit_days_for_year = HashMap::new();
+        n_habit_days_for_year.insert(
+            (selected_habit_idx, cur_year),
+            habits[selected_habit_idx].get_n_habit_days_within_year(cur_year),
+        );
+
         let mut n_reps_total = HashMap::new();
         n_reps_total.insert(
             selected_habit_idx,
             db::habit_get_n_logs(&conn, &habits[selected_habit_idx].name)?,
+        );
+
+        let mut n_habit_days_total = HashMap::new();
+        n_habit_days_total.insert(
+            selected_habit_idx,
+            habits[selected_habit_idx].get_n_habit_days_since_creation(),
         );
 
         let mut calendar = Calendar::new();
@@ -169,7 +183,9 @@ impl App {
             cur_year,
 
             n_reps_for_year,
+            n_habit_days_for_year,
             n_reps_total,
+            n_habit_days_total,
         })
     }
 
@@ -228,6 +244,12 @@ impl App {
                             self.year,
                         )?);
                     }
+                    if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
+                        e.insert(
+                            self.habits[self.selected_habit_idx]
+                                .get_n_habit_days_within_year(self.year),
+                        );
+                    }
                 }
                 KeyCode::Char('l') | KeyCode::Right => {
                     self.year += 1;
@@ -245,6 +267,12 @@ impl App {
                             &self.habits[self.selected_habit_idx].name,
                             self.year,
                         )?);
+                    }
+                    if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
+                        e.insert(
+                            self.habits[self.selected_habit_idx]
+                                .get_n_habit_days_within_year(self.year),
+                        );
                     }
                 }
                 KeyCode::Char('o') => {
@@ -265,6 +293,12 @@ impl App {
                                 self.year,
                             )?);
                         }
+                        if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
+                            e.insert(
+                                self.habits[self.selected_habit_idx]
+                                    .get_n_habit_days_within_year(self.year),
+                            );
+                        }
                     }
                 }
                 KeyCode::Enter => {
@@ -280,6 +314,21 @@ impl App {
                         self.calendar
                             .update_to_habit(&self.habits[self.selected_habit_idx])?;
 
+                        let k = (self.selected_habit_idx, self.year);
+                        if let hash_map::Entry::Vacant(e) = self.n_reps_for_year.entry(k) {
+                            e.insert(db::habit_get_n_logs_for_year(
+                                &self.conn,
+                                &self.habits[self.selected_habit_idx].name,
+                                self.year,
+                            )?);
+                        }
+                        if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
+                            e.insert(
+                                self.habits[self.selected_habit_idx]
+                                    .get_n_habit_days_within_year(self.year),
+                            );
+                        }
+
                         if let hash_map::Entry::Vacant(e) =
                             self.n_reps_total.entry(self.selected_habit_idx)
                         {
@@ -288,14 +337,13 @@ impl App {
                                 &self.habits[self.selected_habit_idx].name,
                             )?);
                         }
-
-                        let k = (self.selected_habit_idx, self.year);
-                        if let hash_map::Entry::Vacant(e) = self.n_reps_for_year.entry(k) {
-                            e.insert(db::habit_get_n_logs_for_year(
-                                &self.conn,
-                                &self.habits[self.selected_habit_idx].name,
-                                self.year,
-                            )?);
+                        if let hash_map::Entry::Vacant(e) =
+                            self.n_habit_days_total.entry(self.selected_habit_idx)
+                        {
+                            e.insert(
+                                self.habits[self.selected_habit_idx]
+                                    .get_n_habit_days_since_creation(),
+                            );
                         }
                     }
                 }
@@ -398,14 +446,32 @@ impl Widget for &mut App {
             .highlight_spacing(HighlightSpacing::Always);
 
         // Summary paragraph
+        let n_reps_total = self.n_reps_total[&self.selected_habit_idx];
+        let n_habit_days_total = self.n_habit_days_total[&self.selected_habit_idx];
+        let percentage_total = if n_habit_days_total != 0 {
+            ((n_reps_total as f32) / (n_habit_days_total as f32)) * 100.0
+        } else {
+            // NOTE: Default to 100% if no habit days.
+            // Perhaps a confusing output.
+            100.0
+        };
+        let n_reps_for_year = self.n_reps_for_year[&(self.selected_habit_idx, self.year)];
+        let n_habit_days_for_year =
+            self.n_habit_days_for_year[&(self.selected_habit_idx, self.year)];
+        let percentage_for_year = if n_habit_days_for_year != 0 {
+            ((n_reps_for_year as f32) / (n_habit_days_for_year as f32)) * 100.0
+        } else {
+            // NOTE: Default to 100% if no habit days.
+            // Perhaps a confusing output.
+            100.0
+        };
         let summary_para = Paragraph::new(vec![
+            Line::from(format!("Total reps: {}", n_reps_total,)),
+            Line::from(format!("Total percentage: {:.1}%", percentage_total)),
+            Line::from(format!("Total reps for year: {}", n_reps_for_year,)),
             Line::from(format!(
-                "Total reps: {}",
-                self.n_reps_total[&self.selected_habit_idx]
-            )),
-            Line::from(format!(
-                "Total reps for year: {}",
-                self.n_reps_for_year[&(self.selected_habit_idx, self.year)]
+                "Total percentage for year: {:.1}%",
+                percentage_for_year
             )),
         ])
         .block(Block::bordered().title("Summary"))
