@@ -2,7 +2,7 @@ use crate::db;
 use crate::habit::Day;
 use crate::habit::Habit;
 use crate::utils;
-use chrono::DateTime;
+use crate::TODAY;
 use chrono::Datelike;
 use chrono::Local;
 use chrono::TimeZone;
@@ -51,10 +51,9 @@ pub struct Calendar {
 
     days_mat: Vec<DayType>,
 
-    today: DateTime<Local>,
-    today_year: i32,
-
     year: i32,
+    cur_year: i32,
+
     start_idx: usize,
     today_idx: usize,
     end_idx: usize,
@@ -66,24 +65,23 @@ impl Calendar {
         // A cell contains the "type" of the day it corresponds to (see `DayType`).
         let days_mat =
             vec![DayType::NotInYear; (N_WEEKS_IN_YEAR as usize) * (N_DAYS_IN_WEEK as usize)];
-        let today = Local::now();
-        let today_year = today.year();
+
+        let cur_year = TODAY.year();
 
         let mut calendar = Calendar {
             conn: None,
 
             days_mat,
 
-            today,
-            today_year,
-
             year: 0,
+            cur_year,
+
             start_idx: 0,
             today_idx: 0,
             end_idx: 0,
         };
 
-        calendar.update_days_mat_to_year(today_year);
+        calendar.update_days_mat_to_year(cur_year);
 
         calendar
     }
@@ -118,10 +116,10 @@ impl Calendar {
         }
 
         // For all days after today, set to `DayType::ToCome`.
-        match year.cmp(&self.today_year) {
+        match year.cmp(&self.cur_year) {
             Ordering::Less => {}
             Ordering::Equal => {
-                let today_idx = start_idx + (utils::nth_day_of_year(&self.today) as usize) - 1;
+                let today_idx = start_idx + (utils::nth_day_of_year(&TODAY) as usize) - 1;
                 for d in self.days_mat[(today_idx + 1)..(end_idx + 1)].iter_mut() {
                     *d = DayType::ToCome;
                 }
@@ -143,7 +141,7 @@ impl Calendar {
     /// Should be called _after_ `update_days_mat_to_year` has been called, otherwise
     /// fields will not be properly set.
     fn update_days_mat_to_habit(&mut self, habit: &Habit) -> eyre::Result<()> {
-        if self.year > self.today_year {
+        if self.year > self.cur_year {
             return Ok(());
         }
 
@@ -162,7 +160,7 @@ impl Calendar {
         let mut log_offset_idx: usize = 0;
         let mut weekday = Weekday::try_from((self.start_idx % 7) as u8).unwrap();
         let mut end_idx = self.end_idx;
-        if self.year == self.today_year {
+        if self.year == self.cur_year {
             end_idx = self.today_idx;
         }
         for i in self.start_idx..end_idx + 1 {
@@ -343,19 +341,19 @@ impl Widget for &mut Calendar {
                         on_dark_gray,
                     )),
                     DayType::ShouldNotHabit => Some(Span::styled(
-                        if self.year == self.today_year && i == self.today_idx {
+                        if self.year == self.cur_year && i == self.today_idx {
                             "ty".to_string()
                         } else {
                             " ".repeat((WIDTH_FOR_DAY - 1) as usize)
                         },
-                        if self.year == self.today_year && i == self.today_idx {
+                        if self.year == self.cur_year && i == self.today_idx {
                             on_dark_gray
                         } else {
                             on_gray
                         },
                     )),
                     DayType::ShouldHabit(true) => Some(Span::styled(
-                        if self.year == self.today_year && i == self.today_idx {
+                        if self.year == self.cur_year && i == self.today_idx {
                             "ty".to_string()
                         } else {
                             " ".repeat((WIDTH_FOR_DAY - 1) as usize)
@@ -363,7 +361,7 @@ impl Widget for &mut Calendar {
                         on_light_green,
                     )),
                     DayType::ShouldHabit(false) => Some(Span::styled(
-                        if self.year == self.today_year && i == self.today_idx {
+                        if self.year == self.cur_year && i == self.today_idx {
                             "ty".to_string()
                         } else {
                             " ".repeat((WIDTH_FOR_DAY - 1) as usize)

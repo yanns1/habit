@@ -1,5 +1,6 @@
 use crate::db;
 use crate::utils;
+use crate::TODAY;
 use chrono::DateTime;
 use chrono::Datelike;
 use chrono::Days;
@@ -52,9 +53,8 @@ impl Habit {
     }
 
     pub fn get_n_habit_days_since_creation(&self) -> usize {
-        let today = Local::now();
         let today = Local
-            .with_ymd_and_hms(today.year(), today.month(), today.day(), 0, 0, 0)
+            .with_ymd_and_hms(TODAY.year(), TODAY.month(), TODAY.day(), 0, 0, 0)
             .unwrap();
         let n_days_since_creation =
             (today.signed_duration_since(self.created_at).num_days() + 1) as usize;
@@ -80,15 +80,14 @@ impl Habit {
             return 0;
         }
 
-        let today = Local::now();
-        match year.cmp(&today.year()) {
+        match year.cmp(&TODAY.year()) {
             Ordering::Less => {
                 let first_day_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
                 let last_day_of_year = Local.with_ymd_and_hms(year, 12, 31, 0, 0, 0).unwrap();
                 let n_days_in_year = if self.created_at.year() == year {
-                    today.signed_duration_since(self.created_at).num_days() + 1
+                    TODAY.signed_duration_since(self.created_at).num_days() + 1
                 } else {
-                    today.signed_duration_since(first_day_of_year).num_days() + 1
+                    TODAY.signed_duration_since(first_day_of_year).num_days() + 1
                 } as usize;
 
                 let n_weeks_in_year = n_days_in_year / 7;
@@ -107,7 +106,7 @@ impl Habit {
             }
             Ordering::Equal => {
                 let today = Local
-                    .with_ymd_and_hms(today.year(), today.month(), today.day(), 0, 0, 0)
+                    .with_ymd_and_hms(TODAY.year(), TODAY.month(), TODAY.day(), 0, 0, 0)
                     .unwrap();
                 let first_day_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
                 let n_days_in_year = if self.created_at.year() == year {
@@ -139,14 +138,14 @@ impl Habit {
         // TODO: Test more thoroughly.
 
         let one_day = Days::new(1);
-        let mut habit_dt = Local::now();
+        let mut habit_dt = *TODAY;
         while !self.days.contains(&habit_dt.weekday().into()) {
             habit_dt = habit_dt - one_day;
         }
 
         let conn = db::get_conn!();
         let mut current_streak = 0;
-        let mut year = Local::now().year();
+        let mut year = TODAY.year();
         let mut continue_streak = true;
         while continue_streak {
             // NOTE: Logs are expected to come out of the database sorted.
@@ -182,7 +181,7 @@ impl Habit {
         // TODO: Test more thoroughly.
 
         let one_day = Days::new(1);
-        let mut habit_dt = Local::now();
+        let mut habit_dt = *TODAY;
         while !self.days.contains(&habit_dt.weekday().into()) {
             habit_dt = habit_dt - one_day;
         }
@@ -190,7 +189,7 @@ impl Habit {
         let conn = db::get_conn!();
         let mut streaks: Vec<u32> = vec![];
         let mut streak: u32 = 0;
-        for year in (self.created_at.year()..(Local::now().year() + 1)).rev() {
+        for year in (self.created_at.year()..(TODAY.year() + 1)).rev() {
             // NOTE: Logs are expected to come out of the database sorted.
             let log_dts = db::habit_get_logs_for_year(&conn, &self.name, year)?;
 

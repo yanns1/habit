@@ -14,3 +14,9 @@ mod show;
 mod suspend;
 mod tui;
 mod utils;
+
+use chrono::DateTime;
+use chrono::Local;
+use std::sync::LazyLock;
+
+static TODAY: LazyLock<DateTime<Local>> = LazyLock::new(Local::now);

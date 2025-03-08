@@ -5,8 +5,8 @@ use crate::show::calendar::Calendar;
 use crate::show::cli::ShowCli;
 use crate::tui;
 use crate::utils;
+use crate::TODAY;
 use chrono::Datelike;
-use chrono::Local;
 use eyre::eyre;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -139,7 +139,7 @@ impl App {
         let mut habit_list_state = ListState::default();
         habit_list_state.select(Some(selected_habit_idx));
 
-        let cur_year = Local::now().year();
+        let cur_year = TODAY.year();
 
         let mut n_reps_for_year = HashMap::new();
         n_reps_for_year.insert(
