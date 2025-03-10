@@ -1,9 +1,9 @@
 use crate::db;
-use crate::habit::Day;
 use crate::habit::Habit;
 use crate::utils;
 use crate::TODAY;
 use chrono::Datelike;
+use chrono::Days;
 use chrono::Local;
 use chrono::TimeZone;
 use chrono::Weekday;
@@ -32,11 +32,7 @@ const WIDTH_FOR_YEAR: u16 = 4;
 const HEIGHT_FOR_YEAR: u16 = 1;
 
 #[derive(Debug, Clone, Copy)]
-/// The "type" of a day, as we are concerned about when we need to know
-/// what to output in each cell of the calendar.
-enum DayType {
-    /// A day not in the year considered, either in the previous or the next year.
-    NotInYear,
+enum DayKind {
     /// A day to come in the future.
     ToCome,
     /// A day for which the habit needs not be performed/logged.
@@ -46,10 +42,19 @@ enum DayType {
     ShouldHabit(bool),
 }
 
+#[derive(Debug, Clone, Copy)]
+/// A cell of the days matrix.
+enum Cell {
+    /// A day not in the year considered, either in the previous or the next year.
+    NotInYear,
+    /// A day in the year.
+    InYear { num: u32, kind: DayKind },
+}
+
 pub struct Calendar {
     conn: Option<PooledConnection<SqliteConnectionManager>>,
 
-    days_mat: Vec<DayType>,
+    days_mat: Vec<Cell>,
 
     year: i32,
     cur_year: i32,
@@ -62,9 +67,8 @@ pub struct Calendar {
 impl Calendar {
     pub fn new() -> Self {
         // Make a days matrix, a 7 by 53 matrix where each cell corresponds to a day of the year.
-        // A cell contains the "type" of the day it corresponds to (see `DayType`).
         let days_mat =
-            vec![DayType::NotInYear; (N_WEEKS_IN_YEAR as usize) * (N_DAYS_IN_WEEK as usize)];
+            vec![Cell::NotInYear; (N_WEEKS_IN_YEAR as usize) * (N_DAYS_IN_WEEK as usize)];
 
         let cur_year = TODAY.year();
 
@@ -81,13 +85,14 @@ impl Calendar {
             end_idx: 0,
         };
 
-        calendar.update_days_mat_to_year(cur_year);
+        // TDOO: Change that unwrap.
+        calendar.update_days_mat_to_year(cur_year).unwrap();
 
         calendar
     }
 
     pub fn update_to_habit_and_year(&mut self, habit: &Habit, year: i32) -> eyre::Result<()> {
-        self.update_days_mat_to_year(year);
+        self.update_days_mat_to_year(year)?;
         self.update_days_mat_to_habit(habit)
     }
 
@@ -95,40 +100,89 @@ impl Calendar {
         self.update_days_mat_to_habit(habit)
     }
 
-    fn update_days_mat_to_year(&mut self, year: i32) {
-        let first_day_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
+    fn update_days_mat_to_year(&mut self, year: i32) -> eyre::Result<()> {
+        // NOTE: Use 12 hours in order to avoid having `checked_add_days` fail, because
+        // of daylight saving time transition. The assumption is that such transitions
+        // typically are around midnight, or early in the morning.
+        let first_day_of_year = Local.with_ymd_and_hms(year, 1, 1, 12, 0, 0).unwrap();
         let first_weekday_of_year = first_day_of_year.weekday();
-        let last_day_of_year = Local.with_ymd_and_hms(year, 12, 31, 0, 0, 0).unwrap();
+        let last_day_of_year = Local.with_ymd_and_hms(year, 12, 31, 12, 0, 0).unwrap();
         let last_weekday_of_year = last_day_of_year.weekday();
 
-        // Set all days in previous year to `DayType::NotInYear`.
+        // Set all days in previous year to `Cell::NotInYear`.
         let mut start_idx = 0;
         while Weekday::try_from((start_idx % 7) as u8).unwrap() != first_weekday_of_year {
-            self.days_mat[start_idx] = DayType::NotInYear;
+            self.days_mat[start_idx] = Cell::NotInYear;
             start_idx += 1;
         }
 
-        // Set all days in next year to `DayType::NotInYear`.
+        // Set all days in next year to `Cell::NotInYear`.
         let mut end_idx = self.days_mat.capacity() - 1;
         while Weekday::try_from((end_idx % 7) as u8).unwrap() != last_weekday_of_year {
-            self.days_mat[end_idx] = DayType::NotInYear;
+            self.days_mat[end_idx] = Cell::NotInYear;
             end_idx -= 1;
         }
 
-        // For all days after today, set to `DayType::ToCome`.
+        let one_day = Days::new(1);
         match year.cmp(&self.cur_year) {
-            Ordering::Less => {}
+            Ordering::Less => {
+                let mut dt = first_day_of_year;
+                for d in self.days_mat[(start_idx)..(end_idx + 1)].iter_mut() {
+                    *d = Cell::InYear {
+                        num: dt.day(),
+                        // Can be whatever value, because it will/should be overwritten by
+                        // `update_days_mat_for_habit`.
+                        kind: DayKind::ShouldNotHabit,
+                    };
+
+                    dt = dt
+                        .checked_add_days(one_day)
+                        .ok_or(eyre::eyre!("Failed to add one day to '{}'. Probably a daylight saving time transition.", dt))?;
+                }
+            }
             Ordering::Equal => {
                 let today_idx = start_idx + (utils::nth_day_of_year(&TODAY) as usize) - 1;
+                let mut dt = first_day_of_year;
+
+                // Set all days num for days between `start_idx` and `today_idx`.
+                for d in self.days_mat[(start_idx)..(today_idx + 1)].iter_mut() {
+                    *d = Cell::InYear {
+                        num: dt.day(),
+                        // Can be whatever value, because it will/should be overwritten by
+                        // `update_days_mat_for_habit`.
+                        kind: DayKind::ShouldNotHabit,
+                    };
+
+                    dt = dt
+                        .checked_add_days(one_day)
+                        .ok_or(eyre::eyre!("Failed to add one day to '{}'. Probably a daylight saving time transition.", dt))?;
+                }
+
+                // For all days after today, set to `Cell::ToCome`.
                 for d in self.days_mat[(today_idx + 1)..(end_idx + 1)].iter_mut() {
-                    *d = DayType::ToCome;
+                    *d = Cell::InYear {
+                        num: dt.day(),
+                        kind: DayKind::ToCome,
+                    };
+
+                    dt = dt
+                        .checked_add_days(one_day)
+                        .ok_or(eyre::eyre!("Failed to add one day to '{}'. Probably a daylight saving time transition.", dt))?;
                 }
 
                 self.today_idx = today_idx;
             }
             Ordering::Greater => {
+                let mut dt = first_day_of_year;
                 for d in self.days_mat[(start_idx)..(end_idx + 1)].iter_mut() {
-                    *d = DayType::ToCome;
+                    *d = Cell::InYear {
+                        num: dt.day(),
+                        kind: DayKind::ToCome,
+                    };
+
+                    dt = dt
+                        .checked_add_days(one_day)
+                        .ok_or(eyre::eyre!("Failed to add one day to '{}'. Probably a daylight saving time transition.", dt))?;
                 }
             }
         }
@@ -136,6 +190,8 @@ impl Calendar {
         self.year = year;
         self.start_idx = start_idx;
         self.end_idx = end_idx;
+
+        Ok(())
     }
 
     /// Should be called _after_ `update_days_mat_to_year` has been called, otherwise
@@ -164,28 +220,40 @@ impl Calendar {
             end_idx = self.today_idx;
         }
         for i in self.start_idx..end_idx + 1 {
-            self.days_mat[i] = if habit.days.contains(&Day::from(weekday)) {
-                if let Some(&offset) = log_offsets.get(log_offset_idx) {
-                    if offset < i {
-                        log_offset_idx += 1;
-                    }
+            match self.days_mat[i] {
+                Cell::NotInYear => {
+                    return Err(eyre::eyre!(
+                        "Cell should be `InYear`, if `update_days_mat_for_year` was called before."
+                    ))
+                }
+                Cell::InYear {
+                    num: _,
+                    ref mut kind,
+                } => {
+                    if habit.days.contains(&weekday.into()) {
+                        if let Some(&offset) = log_offsets.get(log_offset_idx) {
+                            if offset < i {
+                                log_offset_idx += 1;
+                            }
 
-                    if offset == i {
-                        DayType::ShouldHabit(true)
+                            if offset == i {
+                                *kind = DayKind::ShouldHabit(true);
+                            } else {
+                                *kind = DayKind::ShouldHabit(false);
+                            }
+                        } else {
+                            *kind = DayKind::ShouldHabit(false);
+                        }
                     } else {
-                        DayType::ShouldHabit(false)
-                    }
-                } else {
-                    DayType::ShouldHabit(false)
-                }
-            } else {
-                if let Some(&offset) = log_offsets.get(log_offset_idx) {
-                    if offset < i {
-                        log_offset_idx += 1;
-                    }
-                }
+                        if let Some(&offset) = log_offsets.get(log_offset_idx) {
+                            if offset < i {
+                                log_offset_idx += 1;
+                            }
+                        }
 
-                DayType::ShouldNotHabit
+                        *kind = DayKind::ShouldNotHabit;
+                    }
+                }
             };
 
             weekday = weekday.succ();
@@ -335,39 +403,31 @@ impl Widget for &mut Calendar {
                 }
 
                 let span = match self.days_mat[i] {
-                    DayType::NotInYear => None,
-                    DayType::ToCome => Some(Span::styled(
-                        " ".repeat((WIDTH_FOR_DAY - 1) as usize),
-                        on_dark_gray,
-                    )),
-                    DayType::ShouldNotHabit => Some(Span::styled(
-                        if self.year == self.cur_year && i == self.today_idx {
-                            "ty".to_string()
-                        } else {
-                            " ".repeat((WIDTH_FOR_DAY - 1) as usize)
-                        },
-                        if self.year == self.cur_year && i == self.today_idx {
-                            on_dark_gray
-                        } else {
-                            on_gray
-                        },
-                    )),
-                    DayType::ShouldHabit(true) => Some(Span::styled(
-                        if self.year == self.cur_year && i == self.today_idx {
-                            "ty".to_string()
-                        } else {
-                            " ".repeat((WIDTH_FOR_DAY - 1) as usize)
-                        },
-                        on_light_green,
-                    )),
-                    DayType::ShouldHabit(false) => Some(Span::styled(
-                        if self.year == self.cur_year && i == self.today_idx {
-                            "ty".to_string()
-                        } else {
-                            " ".repeat((WIDTH_FOR_DAY - 1) as usize)
-                        },
-                        on_light_red,
-                    )),
+                    Cell::NotInYear => None,
+                    Cell::InYear { num, kind } => {
+                        let num_str = num.to_string();
+                        let padding = (WIDTH_FOR_DAY as usize) - 1 - num_str.len();
+                        let mut day_str = " ".repeat(padding);
+                        day_str.push_str(&num_str);
+
+                        match kind {
+                            DayKind::ToCome => Some(Span::styled(day_str, on_dark_gray)),
+                            DayKind::ShouldNotHabit => Some(Span::styled(
+                                day_str,
+                                if self.year == self.cur_year && i == self.today_idx {
+                                    on_dark_gray
+                                } else {
+                                    on_gray
+                                },
+                            )),
+                            DayKind::ShouldHabit(true) => {
+                                Some(Span::styled(day_str, on_light_green))
+                            }
+                            DayKind::ShouldHabit(false) => {
+                                Some(Span::styled(day_str, on_light_red))
+                            }
+                        }
+                    }
                 };
 
                 if let Some(span) = span {
