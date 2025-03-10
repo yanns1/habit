@@ -30,6 +30,7 @@ const WIDTH_FOR_NAV: u16 = 13;
 const HEIGHT_FOR_NAV: u16 = 1;
 const WIDTH_FOR_YEAR: u16 = 4;
 const HEIGHT_FOR_YEAR: u16 = 1;
+const HEIGHT_FOR_MONTH: u16 = 1;
 
 #[derive(Debug, Clone, Copy)]
 enum DayKind {
@@ -274,17 +275,20 @@ impl Widget for &mut Calendar {
         // Layout
         // ------
 
-        let [_, year_rect, _, days_rect, nav_rect, _] = Layout::default()
+        let [_, year_rect, _, months_rect, _, days_rect, nav_rect, _] = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Fill(1),
                 Constraint::Length(HEIGHT_FOR_YEAR),
+                Constraint::Length(1),
+                Constraint::Length(HEIGHT_FOR_MONTH),
                 Constraint::Length(1),
                 Constraint::Length(HEIGHT_FOR_DAY * N_DAYS_IN_WEEK),
                 Constraint::Length(HEIGHT_FOR_NAV),
                 Constraint::Fill(1),
             ])
             .areas(area);
+
         let [_, year_rect, _] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -293,6 +297,18 @@ impl Widget for &mut Calendar {
                 Constraint::Fill(1),
             ])
             .areas(year_rect);
+
+        let [_, _, _, months_rect, _] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Length(WIDTH_FOR_DAY_NAME),
+                Constraint::Length(2),
+                Constraint::Length(WIDTH_FOR_DAY * N_WEEKS_IN_YEAR),
+                Constraint::Fill(1),
+            ])
+            .areas(months_rect);
+
         let [_, days_rect, _, days_mat_rect, _] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -303,6 +319,7 @@ impl Widget for &mut Calendar {
                 Constraint::Fill(1),
             ])
             .areas(days_rect);
+
         let [_, nav_rect, _] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -395,6 +412,8 @@ impl Widget for &mut Calendar {
         let end_x = start_x + WIDTH_FOR_DAY * N_WEEKS_IN_YEAR;
         let start_y = days_mat_rect.y;
         let end_y = start_y + HEIGHT_FOR_DAY * N_DAYS_IN_WEEK;
+        let mut month_xs = [0; 12];
+        let mut month_idx = 0;
         for x in (start_x..end_x).step_by(WIDTH_FOR_DAY as usize) {
             for y in (start_y..end_y).step_by(HEIGHT_FOR_DAY as usize) {
                 if y >= days_mat_rect.bottom() {
@@ -405,6 +424,16 @@ impl Widget for &mut Calendar {
                 let span = match self.days_mat[i] {
                     Cell::NotInYear => None,
                     Cell::InYear { num, kind } => {
+                        if num == 1 {
+                            debug_assert!(
+                                (0..month_xs.len()).contains(&month_idx),
+                                "`month_idx` out of bounds; got {}",
+                                month_idx
+                            );
+                            month_xs[month_idx] = x;
+                            month_idx += 1;
+                        }
+
                         let num_str = num.to_string();
                         let padding = (WIDTH_FOR_DAY as usize) - 1 - num_str.len();
                         let mut day_str = " ".repeat(padding);
@@ -436,6 +465,87 @@ impl Widget for &mut Calendar {
 
                 i += 1;
             }
+        }
+
+        // Render months
+        // ^^^^^^^^^^^^^
+        debug_assert!(
+            month_idx == month_xs.len(),
+            "There should exactly be the expected number of months: 12."
+        );
+        if months_rect.y < months_rect.bottom() {
+            buf.set_span(
+                month_xs[0],
+                months_rect.y,
+                &Span::styled("Jan", on_black),
+                3,
+            );
+            buf.set_span(
+                month_xs[1],
+                months_rect.y,
+                &Span::styled("Feb", on_black),
+                3,
+            );
+            buf.set_span(
+                month_xs[2],
+                months_rect.y,
+                &Span::styled("Mar", on_black),
+                3,
+            );
+            buf.set_span(
+                month_xs[3],
+                months_rect.y,
+                &Span::styled("Apr", on_black),
+                3,
+            );
+            buf.set_span(
+                month_xs[4],
+                months_rect.y,
+                &Span::styled("May", on_black),
+                3,
+            );
+            buf.set_span(
+                month_xs[5],
+                months_rect.y,
+                &Span::styled("Jun", on_black),
+                3,
+            );
+            buf.set_span(
+                month_xs[6],
+                months_rect.y,
+                &Span::styled("Jul", on_black),
+                3,
+            );
+            buf.set_span(
+                month_xs[7],
+                months_rect.y,
+                &Span::styled("Aug", on_black),
+                3,
+            );
+            buf.set_span(
+                month_xs[8],
+                months_rect.y,
+                &Span::styled("Sep", on_black),
+                3,
+            );
+            buf.set_span(
+                month_xs[9],
+                months_rect.y,
+                &Span::styled("Oct", on_black),
+                3,
+            );
+            buf.set_span(
+                month_xs[10],
+                months_rect.y,
+                &Span::styled("Nov", on_black),
+                3,
+            );
+            buf.set_span(
+                month_xs[11],
+                months_rect.y,
+                &Span::styled("Dec", on_black),
+                3,
+            );
         }
 
         // Render nav
