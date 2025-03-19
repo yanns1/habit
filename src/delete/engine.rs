@@ -1,6 +1,7 @@
 use crate::db;
 use crate::delete::cli::DeleteCli;
 use crate::engine::Engine;
+use crate::macros::get_conn;
 use crate::prompt;
 use eyre::eyre;
 
@@ -14,7 +15,7 @@ struct DeleteEngine {
 
 impl Engine for DeleteEngine {
     fn run(&mut self) -> eyre::Result<()> {
-        let conn = db::get_conn!();
+        let conn = get_conn!();
 
         // check if habit exists in db, if not error
         if !db::habit_exists(&conn, &self.habit)? {

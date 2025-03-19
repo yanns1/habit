@@ -1,5 +1,6 @@
 use crate::db;
 use crate::habit::Habit;
+use crate::macros::get_conn;
 use crate::utils;
 use crate::TODAY;
 use chrono::Datelike;
@@ -206,7 +207,7 @@ impl Calendar {
         }
 
         if self.conn.is_none() {
-            self.conn = Some(db::get_conn!());
+            self.conn = Some(get_conn!());
         }
         let conn = self.conn.as_ref().unwrap();
 

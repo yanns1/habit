@@ -6,6 +6,7 @@ pub mod engine;
 mod habit;
 mod list;
 mod log;
+mod macros;
 mod new;
 mod paths;
 mod prompt;

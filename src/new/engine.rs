@@ -1,6 +1,7 @@
 use crate::db;
 use crate::engine::Engine;
 use crate::habit::Habit;
+use crate::macros::get_conn;
 use crate::new::cli::NewCli;
 use crate::prompt;
 
@@ -21,7 +22,7 @@ impl Engine for NewEngine {
         let habit = Habit::new(name, description, days, at, false, None);
 
         // add to DB
-        let conn = db::get_conn!();
+        let conn = get_conn!();
         db::habit_insert(&conn, &habit)?;
 
         println!("Habit '{}' successfully created!", habit.name);

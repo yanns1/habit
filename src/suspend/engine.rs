@@ -1,5 +1,6 @@
 use crate::db;
 use crate::engine::Engine;
+use crate::macros::get_conn;
 use crate::suspend::cli::SuspendCli;
 use eyre::eyre;
 
@@ -13,7 +14,7 @@ struct SuspendEngine {
 
 impl Engine for SuspendEngine {
     fn run(&mut self) -> eyre::Result<()> {
-        let conn = db::get_conn!();
+        let conn = get_conn!();
 
         // Check if habit exists.
         if !db::habit_exists(&conn, &self.habit)? {

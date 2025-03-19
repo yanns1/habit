@@ -1,6 +1,7 @@
 use crate::db;
 use crate::engine::Engine;
 use crate::habit::Habit;
+use crate::macros::get_conn;
 use crate::show::calendar::Calendar;
 use crate::show::cli::ShowCli;
 use crate::tui;
@@ -50,7 +51,7 @@ struct ShowEngine {
 
 impl Engine for ShowEngine {
     fn run(&mut self) -> eyre::Result<()> {
-        let conn = db::get_conn!();
+        let conn = get_conn!();
 
         // Check if habit exists in db, if not error.
         if let Some(ref habit_name) = self.habit {

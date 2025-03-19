@@ -1,6 +1,7 @@
 use crate::db;
 use crate::engine::Engine;
 use crate::log::cli::LogCli;
+use crate::macros::get_conn;
 use colored::Colorize;
 use eyre::eyre;
 
@@ -14,7 +15,7 @@ struct LogEngine {
 
 impl Engine for LogEngine {
     fn run(&mut self) -> eyre::Result<()> {
-        let conn = db::get_conn!();
+        let conn = get_conn!();
 
         // Check if habit exists.
         if !db::habit_exists(&conn, &self.habit)? {

@@ -1,6 +1,7 @@
 use crate::db;
 use crate::engine::Engine;
 use crate::list::cli::ListCli;
+use crate::macros::get_conn;
 use crate::utils;
 use colored::Colorize;
 
@@ -16,7 +17,7 @@ struct ListEngine {
 
 impl Engine for ListEngine {
     fn run(&mut self) -> eyre::Result<()> {
-        let conn = db::get_conn!();
+        let conn = get_conn!();
 
         if self.verbose {
             let mut habits = db::habit_get_all(&conn)?;

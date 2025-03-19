@@ -1,7 +1,7 @@
-use crate::db;
 use crate::habit::At;
 use crate::habit::Day;
 use crate::habit::ParseAtError;
+use crate::macros::get_conn;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Confirm;
 use dialoguer::Input;
@@ -26,7 +26,7 @@ pub fn prompt_habit_name() -> eyre::Result<String> {
         .with_prompt("Name (make it short!)")
         .validate_with(|input: &String| -> Result<(), String> {
             // Check that there is no existing habit with the same name
-            let conn = db::get_conn!();
+            let conn = get_conn!();
             let input = input.trim();
             match conn.query_row(
                 "SELECT name FROM habit WHERE name = ?1",

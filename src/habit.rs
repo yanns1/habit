@@ -1,4 +1,5 @@
 use crate::db;
+use crate::macros::get_conn;
 use crate::utils;
 use crate::TODAY;
 use chrono::DateTime;
@@ -126,7 +127,7 @@ impl Habit {
             habit_dt = habit_dt - one_day;
         }
 
-        let conn = db::get_conn!();
+        let conn = get_conn!();
         let mut current_streak = 0;
         let mut year = TODAY.year();
         let mut continue_streak = true;
@@ -169,7 +170,7 @@ impl Habit {
             habit_dt = habit_dt - one_day;
         }
 
-        let conn = db::get_conn!();
+        let conn = get_conn!();
         let mut streaks: Vec<u32> = vec![];
         let mut streak: u32 = 0;
         for year in (self.created_at.year()..(TODAY.year() + 1)).rev() {

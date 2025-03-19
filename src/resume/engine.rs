@@ -1,5 +1,6 @@
 use crate::db;
 use crate::engine::Engine;
+use crate::macros::get_conn;
 use crate::resume::cli::ResumeCli;
 use eyre::eyre;
 
@@ -13,7 +14,7 @@ struct ResumeEngine {
 
 impl Engine for ResumeEngine {
     fn run(&mut self) -> eyre::Result<()> {
-        let conn = db::get_conn!();
+        let conn = get_conn!();
 
         // Check if habit exists.
         if !db::habit_exists(&conn, &self.habit)? {

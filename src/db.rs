@@ -191,20 +191,6 @@ pub static DB_CONN_POOL: LazyLock<Pool<SqliteConnectionManager>> = LazyLock::new
     }
 });
 
-/// Macro to get a database connection from the connection pool.
-macro_rules! get_conn {
-    () => {{
-        $crate::db::DB_CONN_POOL
-            .get()
-            .expect("Failed to get a database connection from the pool.")
-    }};
-}
-// NOTE: The line below is to make the macro public to this crate only.
-// Explanations here <https://stackoverflow.com/a/31749071>.
-// I am still do not quite understand why `pub(crate)` instead of `pub`,
-// however.
-pub(crate) use get_conn;
-
 pub fn create_tables(conn: &Connection) -> eyre::Result<()> {
     // Use an integer for storing days. Only seven bits are actually useful, one per day.
     // A day's bit should be 1 if it is included, 0 otherwise.
