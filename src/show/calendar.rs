@@ -31,6 +31,9 @@ const HEIGHT_FOR_NAV: u16 = 1;
 const WIDTH_FOR_YEAR: u16 = 4;
 const HEIGHT_FOR_YEAR: u16 = 1;
 const HEIGHT_FOR_MONTH: u16 = 1;
+const MONTHS: [&'static str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 #[derive(Debug, Clone, Copy)]
 enum DayKind {
@@ -469,83 +472,15 @@ impl Widget for &mut Calendar {
 
         // Render months
         // ^^^^^^^^^^^^^
-        debug_assert!(
-            month_idx == month_xs.len(),
-            "There should exactly be the expected number of months: 12."
-        );
         if months_rect.y < months_rect.bottom() {
-            buf.set_span(
-                month_xs[0],
-                months_rect.y,
-                &Span::styled("Jan", on_black),
-                3,
-            );
-            buf.set_span(
-                month_xs[1],
-                months_rect.y,
-                &Span::styled("Feb", on_black),
-                3,
-            );
-            buf.set_span(
-                month_xs[2],
-                months_rect.y,
-                &Span::styled("Mar", on_black),
-                3,
-            );
-            buf.set_span(
-                month_xs[3],
-                months_rect.y,
-                &Span::styled("Apr", on_black),
-                3,
-            );
-            buf.set_span(
-                month_xs[4],
-                months_rect.y,
-                &Span::styled("May", on_black),
-                3,
-            );
-            buf.set_span(
-                month_xs[5],
-                months_rect.y,
-                &Span::styled("Jun", on_black),
-                3,
-            );
-            buf.set_span(
-                month_xs[6],
-                months_rect.y,
-                &Span::styled("Jul", on_black),
-                3,
-            );
-            buf.set_span(
-                month_xs[7],
-                months_rect.y,
-                &Span::styled("Aug", on_black),
-                3,
-            );
-            buf.set_span(
-                month_xs[8],
-                months_rect.y,
-                &Span::styled("Sep", on_black),
-                3,
-            );
-            buf.set_span(
-                month_xs[9],
-                months_rect.y,
-                &Span::styled("Oct", on_black),
-                3,
-            );
-            buf.set_span(
-                month_xs[10],
-                months_rect.y,
-                &Span::styled("Nov", on_black),
-                3,
-            );
-            buf.set_span(
-                month_xs[11],
-                months_rect.y,
-                &Span::styled("Dec", on_black),
-                3,
-            );
+            for i in 0..month_xs.len() {
+                buf.set_span(
+                    month_xs[i],
+                    months_rect.y,
+                    &Span::styled(MONTHS[i], on_black),
+                    3,
+                );
+            }
         }
 
         // Render nav
