@@ -28,7 +28,7 @@ impl Engine for LogEngine {
         }
 
         // Log a rep.
-        db::log_insert(&conn, &self.habit)?;
+        db::log_insert(&conn, &self.habit, None)?;
 
         let n_reps = db::habit_get_n_logs(&conn, &self.habit)?;
         println!("Rep successfully logged.");

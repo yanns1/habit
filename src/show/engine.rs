@@ -150,7 +150,7 @@ impl App {
         let mut n_habit_days_for_year = HashMap::new();
         n_habit_days_for_year.insert(
             (selected_habit_idx, cur_year),
-            habits[selected_habit_idx].get_n_habit_days_within_year(cur_year),
+            habits[selected_habit_idx].get_n_habit_days_within_year(cur_year)?,
         );
 
         let mut n_reps_total = HashMap::new();
@@ -162,7 +162,7 @@ impl App {
         let mut n_habit_days_total = HashMap::new();
         n_habit_days_total.insert(
             selected_habit_idx,
-            habits[selected_habit_idx].get_n_habit_days_since_creation(),
+            habits[selected_habit_idx].get_n_habit_days_since_creation()?,
         );
 
         let mut current_streak = HashMap::new();
@@ -263,7 +263,7 @@ impl App {
                     if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
                         e.insert(
                             self.habits[self.selected_habit_idx]
-                                .get_n_habit_days_within_year(self.year),
+                                .get_n_habit_days_within_year(self.year)?,
                         );
                     }
                 }
@@ -287,7 +287,7 @@ impl App {
                     if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
                         e.insert(
                             self.habits[self.selected_habit_idx]
-                                .get_n_habit_days_within_year(self.year),
+                                .get_n_habit_days_within_year(self.year)?,
                         );
                     }
                 }
@@ -312,7 +312,7 @@ impl App {
                         if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
                             e.insert(
                                 self.habits[self.selected_habit_idx]
-                                    .get_n_habit_days_within_year(self.year),
+                                    .get_n_habit_days_within_year(self.year)?,
                             );
                         }
                     }
@@ -341,7 +341,7 @@ impl App {
                         if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
                             e.insert(
                                 self.habits[self.selected_habit_idx]
-                                    .get_n_habit_days_within_year(self.year),
+                                    .get_n_habit_days_within_year(self.year)?,
                             );
                         }
 
@@ -358,7 +358,7 @@ impl App {
                         {
                             e.insert(
                                 self.habits[self.selected_habit_idx]
-                                    .get_n_habit_days_since_creation(),
+                                    .get_n_habit_days_since_creation()?,
                             );
                         }
 

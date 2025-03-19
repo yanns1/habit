@@ -2,7 +2,7 @@ use crate::habit;
 use crate::habit::At;
 use crate::habit::Day;
 use crate::habit::Habit;
-use crate::paths::DB_PATH;
+use crate::paths::DATA_DIR_PATH;
 use chrono::DateTime;
 use chrono::Local;
 use chrono::TimeZone;
@@ -115,20 +115,80 @@ use std::sync::LazyLock;
 /// If the database does not exist, it is created and filled with the tables
 /// as part of the initialization.
 pub static DB_CONN_POOL: LazyLock<Pool<SqliteConnectionManager>> = LazyLock::new(|| {
-    // Check if the database existed. If not, need to create the tables.
-    let db_existed = DB_PATH.exists();
+    #[cfg(debug_assertions)]
+    {
+        use std::env;
+        use std::path::PathBuf;
 
-    let manager = SqliteConnectionManager::file(&*DB_PATH);
-    let pool = Pool::new(manager).expect("Failed to create database connection pool.");
+        let mut recreate_db = true;
+        let db_path = if let Ok(db_str) = env::var("DB") {
+            let db_path = PathBuf::from(db_str.clone());
 
-    if !db_existed {
-        let conn = pool
-            .get()
-            .expect("Failed to get a database connection from the pool.");
-        create_tables(&conn).expect("Failed to create database tables.");
+            if db_path.exists() {
+                recreate_db = false;
+                db_path
+            } else {
+                let mut db_path = DATA_DIR_PATH.clone();
+                db_path.push(format!("{}.db", db_str));
+
+                db_path
+            }
+        } else {
+            let mut db_path = DATA_DIR_PATH.clone();
+            db_path.push("default.db");
+
+            db_path
+        };
+
+        // Remove old test database if there is one.
+        if recreate_db && db_path.exists() {
+            std::fs::remove_file(&*db_path).unwrap_or_else(|_| {
+                panic!(
+                    "Failed to remove db at path '{}'.",
+                    db_path.to_string_lossy()
+                )
+            });
+        }
+
+        let manager = SqliteConnectionManager::file(&*db_path);
+        let pool = Pool::new(manager).expect("Failed to create database connection pool.");
+
+        if recreate_db {
+            let conn = pool
+                .get()
+                .expect("Failed to get a database connection from the pool.");
+
+            create_tables(&conn).expect("Failed to create database tables.");
+
+            let stem = db_path.file_stem().unwrap();
+            let stem = stem.to_str().unwrap();
+            debug::fill_db(&conn, stem).unwrap();
+        }
+
+        pool
     }
 
-    pool
+    #[cfg(not(debug_assertions))]
+    {
+        let mut db_path = DATA_DIR_PATH.clone();
+        db_path.push("habit.db");
+
+        // Check if the database existed. If not, need to create the tables.
+        let db_existed = db_path.exists();
+
+        let manager = SqliteConnectionManager::file(&*db_path);
+        let pool = Pool::new(manager).expect("Failed to create database connection pool.");
+
+        if !db_existed {
+            let conn = pool
+                .get()
+                .expect("Failed to get a database connection from the pool.");
+
+            create_tables(&conn).expect("Failed to create database tables.");
+        }
+
+        pool
+    }
 });
 
 /// Macro to get a database connection from the connection pool.
@@ -234,7 +294,15 @@ pub fn habit_insert(conn: &Connection, habit: &Habit) -> eyre::Result<()> {
 
     let byte = habit::days_to_byte(&habit.days[..]);
 
-    let created_at_timestamp = habit.created_at.timestamp();
+    // NOTE: Use timestamp in nanoseconds so as to be consistent with the rest of
+    // the tables.
+    //
+    // However, unlike seconds, milliseconds and microseconds, the range of datetimes for which
+    // we can represent nanoseconds as a i64 is limited, meaning `timestamp_nanos_opt` can fail
+    // (as expressed by the returned `Option`).
+    // The range is from year 1677 to 2262 approximately.
+    // See <https://docs.rs/chrono/latest/chrono/struct.DateTime.html#method.timestamp_nanos_opt> for more details.
+    let created_at_timestamp = habit.created_at.timestamp_nanos_opt().unwrap();
 
     conn.execute(
         "INSERT INTO Habit (id, name, description, days, hour, minutes, suspended, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -274,7 +342,17 @@ fn habit_write_history(conn: &Connection, habit_name: &str) -> eyre::Result<()> 
         )
         .wrap_err(format!("Failed to select Habit with name '{}'.", habit_name))?;
 
-    let recorded_at_timestamp = chrono::Local::now().timestamp();
+    // NOTE: Use timestamp in nanoseconds so as to minimize the likelihood that two (or more)
+    // calls to this function, for a same habit, run fast enough that the timestamps are equal.
+    // Because when `habit_id` and `recorded_at` are equal, the primary key constraint is
+    // violated.
+    //
+    // However, unlike seconds, milliseconds and microseconds, the range of datetimes for which
+    // we can represent nanoseconds as a i64 is limited, meaning `timestamp_nanos_opt` can fail
+    // (as expressed by the returned `Option`).
+    // The range is from year 1677 to 2262 approximately.
+    // See <https://docs.rs/chrono/latest/chrono/struct.DateTime.html#method.timestamp_nanos_opt> for more details.
+    let recorded_at_timestamp = chrono::Local::now().timestamp_nanos_opt().unwrap();
     conn.execute(
         "INSERT INTO HabitHistory (habit_id, name, description, days, hour, minutes, suspended, created_at, recorded_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![id, name, description, days, hour, minutes, suspended, created_at_timestamp, recorded_at_timestamp]
@@ -428,10 +506,15 @@ pub fn habit_get_all(conn: &Connection) -> eyre::Result<Vec<Habit>> {
                 .expect("Hour and minutes from database should be valid.");
             let suspended = row.get::<_, bool>(5)?;
             let created_at_timestamp = row.get::<_, i64>(6)?;
-            let created_at = DateTime::from_timestamp(created_at_timestamp, 0)
-                .expect("Timestamp stored in database should be that returned by DateTime::timestamp, unchanged.")
-                .with_timezone(&Local);
-            Ok(Habit::new(name, description, days, at, suspended, Some(created_at)))
+            let created_at = Local.timestamp_nanos(created_at_timestamp);
+            Ok(Habit::new(
+                name,
+                description,
+                days,
+                at,
+                suspended,
+                Some(created_at),
+            ))
         })
         .wrap_err("Failed to select all habits.")?;
 
@@ -498,11 +581,31 @@ pub fn habit_delete(conn: &Connection, habit_name: &str) -> eyre::Result<()> {
     Ok(())
 }
 
-pub fn log_insert(conn: &Connection, habit_name: &str) -> eyre::Result<()> {
+pub fn log_insert(
+    conn: &Connection,
+    habit_name: &str,
+    created_at: Option<DateTime<Local>>,
+) -> eyre::Result<()> {
     let habit_id = habit_get_id_from_name(conn, habit_name)?;
+
+    // NOTE: Use timestamp in nanoseconds so as to minimize the likelihood that two (or more)
+    // calls to this function run fast enough that the timestamps are equal.
+    // Because when the `created_at` values are equal, the primary key constraint is
+    // violated.
+    //
+    // However, unlike seconds, milliseconds and microseconds, the range of datetimes for which
+    // we can represent nanoseconds as a i64 is limited, meaning `timestamp_nanos_opt` can fail
+    // (as expressed by the returned `Option`).
+    // The range is from year 1677 to 2262 approximately.
+    // See <https://docs.rs/chrono/latest/chrono/struct.DateTime.html#method.timestamp_nanos_opt> for more details.
+    let created_at_timestamp = created_at
+        .unwrap_or(chrono::Local::now())
+        .timestamp_nanos_opt()
+        .unwrap();
+
     conn.execute(
         "INSERT INTO Log (created_at, habit_id) VALUES (?1, ?2)",
-        rusqlite::params![chrono::Local::now().timestamp(), habit_id],
+        rusqlite::params![created_at_timestamp, habit_id],
     )
     .wrap_err("Failed to insert log into database.")?;
 
@@ -536,8 +639,8 @@ pub fn habit_get_n_logs_for_year(
         "SELECT COUNT(1) FROM Log WHERE habit_id = ?1 AND (created_at BETWEEN ?2 AND ?3)",
         rusqlite::params![
             habit_id,
-            first_second_of_year.timestamp(),
-            last_second_of_year.timestamp()
+            first_second_of_year.timestamp_nanos_opt().unwrap(),
+            last_second_of_year.timestamp_nanos_opt().unwrap(),
         ],
         |row| row.get::<_, usize>(0),
     )
@@ -564,11 +667,18 @@ pub fn habit_get_logs_for_year(
         .wrap_err("Failed to prepare statement in `get_logs_for_habit`.")?;
 
     let rows = stmt
-        .query_map(rusqlite::params![habit_id, first_second_of_year.timestamp(), last_second_of_year.timestamp()], |row| {
-            let timestamp = row.get::<_, i64>(0)?;
-            let datetime = DateTime::from_timestamp(timestamp, 0).expect("Timestamp stored in database should be that returned by DateTime::timestamp, unchanged.").with_timezone(&Local);
-            Ok(datetime)
-        })
+        .query_map(
+            rusqlite::params![
+                habit_id,
+                first_second_of_year.timestamp_nanos_opt().unwrap(),
+                last_second_of_year.timestamp_nanos_opt().unwrap()
+            ],
+            |row| {
+                let timestamp = row.get::<_, i64>(0)?;
+                let datetime = Local.timestamp_nanos(timestamp);
+                Ok(datetime)
+            },
+        )
         .wrap_err("Failed to select all logs.")?;
 
     let mut datetimes = Vec::new();
@@ -586,4 +696,670 @@ pub fn log_table_is_empty(conn: &Connection) -> eyre::Result<bool> {
         |row| row.get::<_, bool>(0),
     )
     .wrap_err("Failed to check if Log table is empty.")
+}
+
+#[cfg(debug_assertions)]
+mod debug {
+    use super::habit_insert;
+    use super::habit_update_suspended;
+    use super::log_insert;
+    use crate::habit::At;
+    use crate::habit::Day;
+    use crate::habit::Habit;
+    use crate::TODAY;
+    use chrono::DateTime;
+    use chrono::Datelike;
+    use chrono::Days;
+    use chrono::Local;
+    use chrono::TimeZone;
+    use rusqlite::Connection;
+
+    pub fn fill_db(conn: &Connection, name: &str) -> eyre::Result<()> {
+        match name {
+            "default" => fill_db_default(conn),
+            "empty" => Ok(()),
+            "new" => fill_db_new(conn),
+            "edit" => fill_db_edit(conn),
+            "delete" => fill_db_delete(conn),
+            "list" => fill_db_list(conn),
+            "log" => fill_db_log(conn),
+            "suspend" => fill_db_suspend(conn),
+            "resume" => fill_db_resume(conn),
+            "show" => fill_db_show(conn),
+            _ => panic!("Unexpected DB name; got '{}'.", name),
+        }
+    }
+
+    /// Fill default test database.
+    fn fill_db_default(conn: &Connection) -> eyre::Result<()> {
+        let h1 = Habit::new(
+            "h1".to_string(),
+            "Description of habit 1.".to_string(),
+            vec![Day::Monday],
+            At::build(8, 0).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 1, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h1)?;
+        // To fill `HabitHistory` a bit.
+        habit_update_suspended(conn, &h1.name, true)?;
+        habit_update_suspended(conn, &h1.name, false)?;
+        // To fill `Log` a bit.
+        for dt in generate_logs_all(&h1) {
+            log_insert(conn, &h1.name, Some(dt))?;
+        }
+
+        let h2 = Habit::new(
+            "h2".to_string(),
+            "Description of habit 2.".to_string(),
+            vec![Day::Tuesday, Day::Wednesday],
+            At::build(9, 30).unwrap(),
+            true,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 9, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h2)?;
+        // To fill `HabitHistory` a bit.
+        habit_update_suspended(conn, &h2.name, true)?;
+        habit_update_suspended(conn, &h2.name, false)?;
+        // To fill `Log` a bit.
+        for dt in generate_logs_one_in_two(&h2) {
+            log_insert(conn, &h2.name, Some(dt))?;
+        }
+
+        let h3 = Habit::new(
+            "h3".to_string(),
+            "Description of habit 3.".to_string(),
+            vec![Day::Thursday, Day::Friday, Day::Sunday],
+            At::build(11, 50).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 17, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h3)?;
+        // To fill `HabitHistory` a bit.
+        habit_update_suspended(conn, &h3.name, true)?;
+        habit_update_suspended(conn, &h3.name, false)?;
+        // To fill `Log` a bit.
+        for dt in generate_logs_all(&h3) {
+            log_insert(conn, &h3.name, Some(dt))?;
+        }
+
+        Ok(())
+    }
+
+    /// Fill database for testing subcomand `habit new`.
+    ///
+    /// # Manual tests
+    ///
+    /// - Check that the name prompt errors when "h1", "h2", "h3", "h4" on "h5" is entered,
+    ///   because "habit already exists". Any other name should work.
+    /// - The description prompt should accept anything.
+    /// - Press spacebar to select a day, Enter to confirm the whole selection.
+    ///   Any combination of selected/unselected days should work.
+    /// - Check that the at prompt errors when the format of the input is not "hh:mm",
+    ///   or when the input hour/minutes is out of bounds ([[0, 23]] and [[0, 59]]).
+    /// - Check if the proper data was written to the database by running:
+    ///     `SELECT * FROM Habit;`
+    ///
+    fn fill_db_new(conn: &Connection) -> eyre::Result<()> {
+        let h1 = Habit::new(
+            "h1".to_string(),
+            "Description of habit 1.".to_string(),
+            vec![Day::Monday],
+            At::build(8, 0).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 1, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h1)?;
+
+        let h2 = Habit::new(
+            "h2".to_string(),
+            "Description of habit 2.".to_string(),
+            vec![Day::Tuesday, Day::Wednesday],
+            At::build(9, 30).unwrap(),
+            true,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 9, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h2)?;
+
+        let h3 = Habit::new(
+            "h3".to_string(),
+            "Description of habit 3.".to_string(),
+            vec![Day::Thursday, Day::Friday, Day::Sunday],
+            At::build(11, 50).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 17, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h3)?;
+
+        let h4 = Habit::new(
+            "h4".to_string(),
+            "Description of habit 4.".to_string(),
+            vec![
+                Day::Monday,
+                Day::Tuesday,
+                Day::Wednesday,
+                Day::Thursday,
+                Day::Friday,
+                Day::Saturday,
+                Day::Sunday,
+            ],
+            At::build(12, 10).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 25, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h4)?;
+
+        let h5 = Habit::new(
+            "h5".to_string(),
+            "Description of habit 5.".to_string(),
+            vec![Day::Monday, Day::Wednesday, Day::Friday, Day::Sunday],
+            At::build(7, 15).unwrap(),
+            false,
+            Some(Local.with_ymd_and_hms(TODAY.year(), 2, 1, 7, 0, 0).unwrap()),
+        );
+        habit_insert(conn, &h5)?;
+
+        Ok(())
+    }
+
+    /// Fill database for testing subcomand `habit edit`.
+    ///
+    /// # Manual tests
+    ///
+    /// - Run `DB=edit cargo r -- edit whatever name`.
+    ///     It should fail because habit "whatever" does not exist.
+    /// - Run `DB=edit cargo r -- edit h1 name`.
+    ///     It should work for any name other than those already existing.
+    ///     Check that the new name was written to the DB using:
+    ///     `SELECT * FROM Habit;`
+    ///     Check that there is a new entry in table `HabitHistory`:
+    ///     `SELECT * FROM HabitHistory;`
+    /// - Run `DB=edit cargo r -- edit h1 description`.
+    ///     It should work for any description.
+    ///     Check that the new description was written to the DB using:
+    ///     `SELECT * FROM Habit;`
+    ///     Check that there is a new entry in table `HabitHistory`:
+    ///     `SELECT * FROM HabitHistory;`
+    /// - Run `DB=edit cargo r -- edit h1 days`.
+    ///     It should work for any combination of days.
+    ///     Check that the new days were written to the DB using:
+    ///     `SELECT * FROM Habit;`
+    ///     Check that there is a new entry in table `HabitHistory`:
+    ///     `SELECT * FROM HabitHistory;`
+    /// - Run `DB=edit cargo r -- edit h1 at`.
+    ///     The prompt should error if the format is wrong, or the hour/minutes
+    ///     is out of bounds.
+    ///     Check that the new at was written to the DB using:
+    ///     `SELECT * FROM Habit;`
+    ///     Check that there is a new entry in table `HabitHistory`:
+    ///     `SELECT * FROM HabitHistory;`
+    ///
+    fn fill_db_edit(conn: &Connection) -> eyre::Result<()> {
+        let h1 = Habit::new(
+            "h1".to_string(),
+            "Description of habit 1.".to_string(),
+            vec![Day::Monday],
+            At::build(8, 0).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 1, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h1)?;
+
+        Ok(())
+    }
+
+    /// Fill database for testing subcomand `habit delete`.
+    ///
+    /// # Manual tests
+    ///
+    /// - Run `DB=delete cargo r -- delete whatever`.
+    ///     It should fail because habit "whatever" does not exist.
+    /// - Run `DB=delete cargo r -- delete h1`.
+    ///     It should ask for confirmation, and do nothing if "n" is pressed.
+    /// - Run `DB=delete cargo r -- delete h1`.
+    ///     It should ask for confirmation, and succeed if "y" is pressed.
+    ///     Check that the entry for `h1` no longer is in table `Habit`:
+    ///     `SELECT * FROM Habit;`
+    ///     Deletion should cascade on `Log` and `HabitHistory`.
+    ///     Make sure this is the case:
+    ///     `SELECT * FROM Log WHERE habit_id = 0;`
+    ///     `SELECT * FROM HabitHistory; WHERE habit_id = 0;`
+    fn fill_db_delete(conn: &Connection) -> eyre::Result<()> {
+        let h1 = Habit::new(
+            "h1".to_string(),
+            "Description of habit 1.".to_string(),
+            vec![Day::Monday],
+            At::build(8, 0).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 1, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h1)?;
+        // To fill `HabitHistory` a bit.
+        habit_update_suspended(conn, &h1.name, true)?;
+        habit_update_suspended(conn, &h1.name, false)?;
+        // To fill `Log` a bit.
+        for dt in generate_logs_all(&h1) {
+            log_insert(conn, &h1.name, Some(dt))?;
+        }
+
+        let h2 = Habit::new(
+            "h2".to_string(),
+            "Description of habit 2.".to_string(),
+            vec![Day::Tuesday, Day::Wednesday],
+            At::build(9, 30).unwrap(),
+            true,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 9, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h2)?;
+        // To fill `HabitHistory` a bit.
+        habit_update_suspended(conn, &h2.name, true)?;
+        habit_update_suspended(conn, &h2.name, false)?;
+        // To fill `Log` a bit.
+        for dt in generate_logs_one_in_two(&h2) {
+            log_insert(conn, &h2.name, Some(dt))?;
+        }
+
+        let h3 = Habit::new(
+            "h3".to_string(),
+            "Description of habit 3.".to_string(),
+            vec![Day::Thursday, Day::Friday, Day::Sunday],
+            At::build(11, 50).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 17, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h3)?;
+        // To fill `HabitHistory` a bit.
+        habit_update_suspended(conn, &h3.name, true)?;
+        habit_update_suspended(conn, &h3.name, false)?;
+        // To fill `Log` a bit.
+        for dt in generate_logs_all(&h3) {
+            log_insert(conn, &h3.name, Some(dt))?;
+        }
+
+        Ok(())
+    }
+
+    /// Fill database for testing subcomand `habit list`.
+    ///
+    /// # Manual tests
+    ///
+    /// - Run ``.
+    /// - Run `DB=list cargo r -- list`, output should be:
+    ///
+    ///     ```text
+    ///     h1
+    ///     h2
+    ///     h3
+    ///     h4
+    ///     h5
+    ///     ```
+    ///
+    /// - Run `habit list -v`, check that the output corresponds
+    ///     to the inserted data.
+    fn fill_db_list(conn: &Connection) -> eyre::Result<()> {
+        let h1 = Habit::new(
+            "h1".to_string(),
+            "Description of habit 1.".to_string(),
+            vec![Day::Monday],
+            At::build(8, 0).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 1, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h1)?;
+
+        let h2 = Habit::new(
+            "h2".to_string(),
+            "Description of habit 2.".to_string(),
+            vec![Day::Tuesday, Day::Wednesday],
+            At::build(9, 30).unwrap(),
+            true,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 9, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h2)?;
+
+        let h3 = Habit::new(
+            "h3".to_string(),
+            "Description of habit 3.".to_string(),
+            vec![Day::Thursday, Day::Friday, Day::Sunday],
+            At::build(11, 50).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 17, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h3)?;
+
+        let h4 = Habit::new(
+            "h4".to_string(),
+            "Description of habit 4.".to_string(),
+            vec![
+                Day::Monday,
+                Day::Tuesday,
+                Day::Wednesday,
+                Day::Thursday,
+                Day::Friday,
+                Day::Saturday,
+                Day::Sunday,
+            ],
+            At::build(12, 10).unwrap(),
+            true,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 25, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h4)?;
+
+        let h5 = Habit::new(
+            "h5".to_string(),
+            "Description of habit 5.".to_string(),
+            vec![Day::Monday, Day::Wednesday, Day::Friday, Day::Sunday],
+            At::build(7, 15).unwrap(),
+            false,
+            Some(Local.with_ymd_and_hms(TODAY.year(), 2, 1, 7, 0, 0).unwrap()),
+        );
+        habit_insert(conn, &h5)?;
+
+        Ok(())
+    }
+
+    /// Fill database for testing subcomand `habit log`.
+    ///
+    /// # Manual tests
+    ///
+    /// - Run `DB=log cargo r -- log whatever`.
+    ///     It should fail because habit "whatever" does not exist.
+    /// - Run `DB=log cargo r -- log h1`.
+    ///     It should succeed.
+    ///     Check that the log has been added to the database:
+    ///     `SELECT * FROM Log;`
+    ///     This should be the only log of h1.
+    /// - Run `DB=log cargo r -- log h2`.
+    ///     It should succeed.
+    ///     Check that the log has been added to the database:
+    ///     `SELECT * FROM Log;`
+    ///     This is not the only log of h2.
+    /// - Run `DB=log cargo r -- log h3`.
+    ///     It should succeed, but do nothing and warn that h3 is suspended.
+    fn fill_db_log(conn: &Connection) -> eyre::Result<()> {
+        let h1 = Habit::new(
+            "h1".to_string(),
+            "Description of habit 1.".to_string(),
+            vec![Day::Monday],
+            At::build(8, 0).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 1, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h1)?;
+
+        let h2 = Habit::new(
+            "h2".to_string(),
+            "Description of habit 2.".to_string(),
+            vec![Day::Tuesday, Day::Wednesday],
+            At::build(9, 30).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 9, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h2)?;
+        for dt in generate_logs_all(&h2) {
+            log_insert(conn, &h2.name, Some(dt))?;
+        }
+
+        let h3 = Habit::new(
+            "h3".to_string(),
+            "Description of habit 3.".to_string(),
+            vec![Day::Monday],
+            At::build(8, 0).unwrap(),
+            true,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 1, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h3)?;
+
+        Ok(())
+    }
+
+    /// Fill database for testing subcomand `habit suspend`.
+    ///
+    /// # Manual tests
+    ///
+    /// - Run `habit suspend h1`.
+    ///     It should succeed.
+    ///     Check in the database that the `suspended` column is set to 1 for `h1`.
+    /// - Run `habit suspend whatever`.
+    ///     It should fail because habit "whatever" does not exist.
+    fn fill_db_suspend(conn: &Connection) -> eyre::Result<()> {
+        let h1 = Habit::new(
+            "h1".to_string(),
+            "Description of habit 1.".to_string(),
+            vec![Day::Monday],
+            At::build(8, 0).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 1, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h1)?;
+
+        Ok(())
+    }
+
+    /// Fill database for testing subcomand `habit resume`.
+    ///
+    /// # Manual tests
+    ///
+    /// - Run `DB=resume cargo r -- resume h1`.
+    ///     It should succeed.
+    ///     Check in the database that the `suspended` column is set to 0 for `h1`.
+    /// - Run `DB=resume cargo r -- resume h2`.
+    ///     It should succeed, but do nothing, and provide a warning saying
+    ///     that h2 is already resumed.
+    /// - Run `DB=resume cargo r -- resume whatever`.
+    ///     It should fail because habit "whatever" does not exist.
+    fn fill_db_resume(conn: &Connection) -> eyre::Result<()> {
+        let h1 = Habit::new(
+            "h1".to_string(),
+            "Description of habit 1.".to_string(),
+            vec![Day::Monday],
+            At::build(8, 0).unwrap(),
+            true,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 1, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h1)?;
+
+        let h2 = Habit::new(
+            "h2".to_string(),
+            "Description of habit 2.".to_string(),
+            vec![Day::Monday],
+            At::build(8, 0).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 1, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h2)?;
+
+        Ok(())
+    }
+
+    /// Fill database for testing subcomand `habit show`.
+    ///
+    /// # Manual tests
+    ///
+    /// TODO
+    fn fill_db_show(conn: &Connection) -> eyre::Result<()> {
+        let h1 = Habit::new(
+            "h1".to_string(),
+            "Description of habit 1.".to_string(),
+            vec![Day::Monday],
+            At::build(8, 0).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 1, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h1)?;
+        // To fill `Log` a bit.
+        for dt in generate_logs_all(&h1) {
+            log_insert(conn, &h1.name, Some(dt))?;
+        }
+
+        let h2 = Habit::new(
+            "h2".to_string(),
+            "Description of habit 2.".to_string(),
+            vec![Day::Tuesday, Day::Wednesday],
+            At::build(9, 30).unwrap(),
+            true,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 9, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h2)?;
+        // To fill `Log` a bit.
+        for dt in generate_logs_one_in_two(&h2) {
+            log_insert(conn, &h2.name, Some(dt))?;
+        }
+
+        let h3 = Habit::new(
+            "h3".to_string(),
+            "Description of habit 3.".to_string(),
+            vec![Day::Thursday, Day::Friday, Day::Sunday],
+            At::build(11, 50).unwrap(),
+            false,
+            Some(
+                Local
+                    .with_ymd_and_hms(TODAY.year(), 1, 17, 10, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        habit_insert(conn, &h3)?;
+        // To fill `Log` a bit.
+        for dt in generate_logs_all(&h3) {
+            log_insert(conn, &h3.name, Some(dt))?;
+        }
+
+        Ok(())
+    }
+
+    fn generate_logs_all(habit: &Habit) -> Vec<DateTime<Local>> {
+        let mut dts: Vec<DateTime<Local>> = vec![];
+        let mut dt = habit.created_at;
+        let one_day = Days::new(1);
+        while dt <= *TODAY {
+            if habit.days.contains(&dt.weekday().into()) {
+                dts.push(dt);
+            }
+
+            dt = dt.checked_add_days(one_day).unwrap_or_else(|| {
+                panic!(
+                    "Failed to add one day to '{}'. Probably a daylight saving time transition.",
+                    dt
+                )
+            });
+        }
+
+        dts
+    }
+
+    fn generate_logs_one_in_two(habit: &Habit) -> Vec<DateTime<Local>> {
+        let mut dts: Vec<DateTime<Local>> = vec![];
+        let mut dt = habit.created_at;
+        let mut should_add = true;
+        let one_day = Days::new(1);
+        while dt <= *TODAY {
+            if habit.days.contains(&dt.weekday().into()) {
+                if should_add {
+                    dts.push(dt);
+                }
+                should_add = !should_add;
+            }
+
+            dt = dt.checked_add_days(one_day).unwrap_or_else(|| {
+                panic!(
+                    "Failed to add one day to '{}'. Probably a daylight saving time transition.",
+                    dt
+                )
+            });
+        }
+
+        dts
+    }
 }
