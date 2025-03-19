@@ -245,51 +245,55 @@ impl App {
                     self.habit_list_state.select_last();
                 }
                 KeyCode::Char('h') | KeyCode::Left => {
-                    self.year -= 1;
+                    if self.year > 1678 {
+                        self.year -= 1;
 
-                    debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                    self.calendar.update_to_habit_and_year(
-                        &self.habits[self.selected_habit_idx],
-                        self.year,
-                    )?;
-
-                    let k = (self.selected_habit_idx, self.year);
-                    if let hash_map::Entry::Vacant(e) = self.n_reps_for_year.entry(k) {
-                        e.insert(db::habit_get_n_logs_for_year(
-                            &self.conn,
-                            &self.habits[self.selected_habit_idx].name,
+                        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                        self.calendar.update_to_habit_and_year(
+                            &self.habits[self.selected_habit_idx],
                             self.year,
-                        )?);
-                    }
-                    if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
-                        e.insert(
-                            self.habits[self.selected_habit_idx]
-                                .get_n_habit_days_within_year(self.year)?,
-                        );
+                        )?;
+
+                        let k = (self.selected_habit_idx, self.year);
+                        if let hash_map::Entry::Vacant(e) = self.n_reps_for_year.entry(k) {
+                            e.insert(db::habit_get_n_logs_for_year(
+                                &self.conn,
+                                &self.habits[self.selected_habit_idx].name,
+                                self.year,
+                            )?);
+                        }
+                        if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
+                            e.insert(
+                                self.habits[self.selected_habit_idx]
+                                    .get_n_habit_days_within_year(self.year)?,
+                            );
+                        }
                     }
                 }
                 KeyCode::Char('l') | KeyCode::Right => {
-                    self.year += 1;
+                    if self.year < 2261 {
+                        self.year += 1;
 
-                    debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
-                    self.calendar.update_to_habit_and_year(
-                        &self.habits[self.selected_habit_idx],
-                        self.year,
-                    )?;
-
-                    let k = (self.selected_habit_idx, self.year);
-                    if let hash_map::Entry::Vacant(e) = self.n_reps_for_year.entry(k) {
-                        e.insert(db::habit_get_n_logs_for_year(
-                            &self.conn,
-                            &self.habits[self.selected_habit_idx].name,
+                        debug_assert!((0..self.habits.len()).contains(&self.selected_habit_idx));
+                        self.calendar.update_to_habit_and_year(
+                            &self.habits[self.selected_habit_idx],
                             self.year,
-                        )?);
-                    }
-                    if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
-                        e.insert(
-                            self.habits[self.selected_habit_idx]
-                                .get_n_habit_days_within_year(self.year)?,
-                        );
+                        )?;
+
+                        let k = (self.selected_habit_idx, self.year);
+                        if let hash_map::Entry::Vacant(e) = self.n_reps_for_year.entry(k) {
+                            e.insert(db::habit_get_n_logs_for_year(
+                                &self.conn,
+                                &self.habits[self.selected_habit_idx].name,
+                                self.year,
+                            )?);
+                        }
+                        if let hash_map::Entry::Vacant(e) = self.n_habit_days_for_year.entry(k) {
+                            e.insert(
+                                self.habits[self.selected_habit_idx]
+                                    .get_n_habit_days_within_year(self.year)?,
+                            );
+                        }
                     }
                 }
                 KeyCode::Char('o') => {

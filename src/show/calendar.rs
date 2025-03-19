@@ -106,6 +106,17 @@ impl Calendar {
     }
 
     fn update_days_mat_to_year(&mut self, year: i32) -> eyre::Result<()> {
+        // Because we use nanoseconds for timestamps in the database layer, we
+        // cannot represent datetimes before 1678 and after 2261 (approximately).
+        // See <https://docs.rs/chrono/latest/chrono/struct.DateTime.html#method.timestamp_nanos_opt> for more details.
+        // In case the year asked by the user is outside this range, we error.
+        if !(1678..2262).contains(&year) {
+            return Err(eyre::eyre!(
+                "Cannot update to year before 1678 or after 2261; got {}.",
+                year
+            ));
+        }
+
         // NOTE: Use 12 hours in order to avoid having `checked_add_days` fail, because
         // of daylight saving time transition. The assumption is that such transitions
         // typically are around midnight, or early in the morning.
