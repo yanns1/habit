@@ -31,7 +31,7 @@ const HEIGHT_FOR_NAV: u16 = 1;
 const WIDTH_FOR_YEAR: u16 = 4;
 const HEIGHT_FOR_YEAR: u16 = 1;
 const HEIGHT_FOR_MONTH: u16 = 1;
-const MONTHS: [&'static str; 12] = [
+const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
