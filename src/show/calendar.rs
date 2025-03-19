@@ -234,12 +234,12 @@ impl Calendar {
                     num: _,
                     ref mut kind,
                 } => {
+                    while log_offset_idx < log_offsets.len() && log_offsets[log_offset_idx] < i {
+                        log_offset_idx += 1;
+                    }
+
                     if habit.days.contains(&weekday.into()) {
                         if let Some(&offset) = log_offsets.get(log_offset_idx) {
-                            if offset < i {
-                                log_offset_idx += 1;
-                            }
-
                             if offset == i {
                                 *kind = DayKind::ShouldHabit(true);
                             } else {
@@ -249,12 +249,6 @@ impl Calendar {
                             *kind = DayKind::ShouldHabit(false);
                         }
                     } else {
-                        if let Some(&offset) = log_offsets.get(log_offset_idx) {
-                            if offset < i {
-                                log_offset_idx += 1;
-                            }
-                        }
-
                         *kind = DayKind::ShouldNotHabit;
                     }
                 }
