@@ -8,7 +8,6 @@ use chrono::Local;
 use chrono::TimeZone;
 use chrono::Weekday;
 use regex::Regex;
-use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::LazyLock;
@@ -52,86 +51,70 @@ impl Habit {
         }
     }
 
-    pub fn get_n_habit_days_since_creation(&self) -> usize {
-        let today = Local
-            .with_ymd_and_hms(TODAY.year(), TODAY.month(), TODAY.day(), 0, 0, 0)
+    pub fn get_n_habit_days_since_creation(&self) -> eyre::Result<usize> {
+        let one_day = Days::new(1);
+        let mut dt = Local
+            .with_ymd_and_hms(
+                self.created_at.year(),
+                self.created_at.month(),
+                self.created_at.day(),
+                12,
+                0,
+                0,
+            )
             .unwrap();
-        let n_days_since_creation =
-            (today.signed_duration_since(self.created_at).num_days() + 1) as usize;
-
-        let n_weeks_since_creation = n_days_since_creation / 7;
-        let n_remaining_days = n_days_since_creation % 7;
-        let mut n_habit_days_since_creation = n_weeks_since_creation * self.days.len();
-
-        let mut weekday = today.weekday();
-        for _ in 0..n_remaining_days {
-            if self.days.contains(&weekday.into()) {
+        let mut n_habit_days_since_creation = 0;
+        while dt < *TODAY {
+            if self.days.contains(&dt.weekday().into()) {
                 n_habit_days_since_creation += 1;
             }
-            weekday = weekday.pred();
+
+            dt = dt.checked_add_days(one_day).ok_or(eyre::eyre!(
+                "Failed to add one day to '{}'. Probably a daylight saving time transition.",
+                dt
+            ))?;
         }
 
-        n_habit_days_since_creation
+        Ok(n_habit_days_since_creation)
     }
 
-    pub fn get_n_habit_days_within_year(&self, year: i32) -> usize {
+    pub fn get_n_habit_days_within_year(&self, year: i32) -> eyre::Result<usize> {
         if year < self.created_at.year() {
             // If asking habit days for before creation of habit, return 0.
-            return 0;
+            return Ok(0);
         }
 
-        match year.cmp(&TODAY.year()) {
-            Ordering::Less => {
-                let first_day_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
-                let last_day_of_year = Local.with_ymd_and_hms(year, 12, 31, 0, 0, 0).unwrap();
-                let n_days_in_year = if self.created_at.year() == year {
-                    TODAY.signed_duration_since(self.created_at).num_days() + 1
-                } else {
-                    TODAY.signed_duration_since(first_day_of_year).num_days() + 1
-                } as usize;
-
-                let n_weeks_in_year = n_days_in_year / 7;
-                let n_remaining_days = n_days_in_year % 7;
-                let mut n_habit_days_within_year = n_weeks_in_year * self.days.len();
-
-                let mut weekday = last_day_of_year.weekday();
-                for _ in 0..n_remaining_days {
-                    if self.days.contains(&weekday.into()) {
-                        n_habit_days_within_year += 1;
-                    }
-                    weekday = weekday.pred();
-                }
-
-                n_habit_days_within_year
-            }
-            Ordering::Equal => {
-                let today = Local
-                    .with_ymd_and_hms(TODAY.year(), TODAY.month(), TODAY.day(), 0, 0, 0)
-                    .unwrap();
-                let first_day_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
-                let n_days_in_year = if self.created_at.year() == year {
-                    today.signed_duration_since(self.created_at).num_days() + 1
-                } else {
-                    today.signed_duration_since(first_day_of_year).num_days() + 1
-                } as usize;
-
-                let n_weeks_in_year = n_days_in_year / 7;
-                let n_remaining_days = n_days_in_year % 7;
-                let mut n_habit_days_within_year = n_weeks_in_year * self.days.len();
-
-                let mut weekday = today.weekday();
-                for _ in 0..n_remaining_days {
-                    if self.days.contains(&weekday.into()) {
-                        n_habit_days_within_year += 1;
-                    }
-                    weekday = weekday.pred();
-                }
-
-                n_habit_days_within_year
-            }
+        if year > TODAY.year() {
             // If asking habit days for after today, return 0.
-            Ordering::Greater => 0,
+            return Ok(0);
         }
+
+        let mut dt = if self.created_at.year() == year {
+            self.created_at
+        } else {
+            Local.with_ymd_and_hms(year, 1, 1, 12, 0, 0).unwrap()
+        };
+        let last_day = if year == TODAY.year() {
+            Local
+                .with_ymd_and_hms(TODAY.year(), TODAY.month(), TODAY.day(), 12, 0, 0)
+                .unwrap()
+        } else {
+            Local.with_ymd_and_hms(year, 12, 31, 23, 59, 59).unwrap()
+        };
+        let one_day = Days::new(1);
+        let mut n_habit_days_within_year = 0;
+        while dt < last_day {
+            if self.days.contains(&dt.weekday().into()) {
+                n_habit_days_within_year += 1;
+            }
+
+            dt = dt.checked_add_days(one_day).ok_or(eyre::eyre!(
+                "Failed to add one day to '{}'. Probably a daylight saving time transition.",
+                dt
+            ))?;
+        }
+
+        Ok(n_habit_days_within_year)
     }
 
     pub fn get_current_streak(&self) -> eyre::Result<u32> {
