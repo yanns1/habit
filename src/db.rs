@@ -526,6 +526,34 @@ pub fn habit_get_names(conn: &Connection) -> eyre::Result<Vec<String>> {
     Ok(names)
 }
 
+pub fn habit_get_from_name(conn: &Connection, habit_name: &str) -> eyre::Result<Habit> {
+    conn.query_row(
+        "SELECT description, days, hour, minutes, suspended, created_at FROM Habit WHERE name = ?1",
+        rusqlite::params![habit_name],
+        |row| {
+            let description = row.get::<_, String>(0)?;
+            let days = habit::byte_to_days(row.get::<_, u8>(1)?);
+            let at = At::build(row.get::<_, u8>(2)?, row.get::<_, u8>(3)?)
+                .expect("Hour and minutes from database should be valid.");
+            let suspended = row.get::<_, bool>(4)?;
+            let created_at_timestamp = row.get::<_, i64>(5)?;
+            let created_at = Local.timestamp_nanos(created_at_timestamp);
+            Ok(Habit::new(
+                habit_name.to_string(),
+                description,
+                days,
+                at,
+                suspended,
+                Some(created_at),
+            ))
+        },
+    )
+    .wrap_err(format!(
+        "Failed to select Habit with name '{}'.",
+        habit_name
+    ))
+}
+
 fn habit_get_id_from_name(conn: &Connection, habit_name: &str) -> eyre::Result<usize> {
     conn.query_row(
         "SELECT id FROM Habit WHERE name = ?1",
@@ -636,28 +664,26 @@ pub fn habit_get_n_logs_for_year(
     ))
 }
 
-pub fn habit_get_logs_for_year(
+pub fn habit_get_logs_between(
     conn: &Connection,
     habit_name: &str,
-    year: i32,
+    dt1: &DateTime<Local>,
+    dt2: &DateTime<Local>,
 ) -> eyre::Result<Vec<DateTime<Local>>> {
     let habit_id = habit_get_id_from_name(conn, habit_name)?;
-
-    let first_second_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
-    let last_second_of_year = Local.with_ymd_and_hms(year, 12, 31, 23, 59, 59).unwrap();
 
     let mut stmt = conn
         .prepare(
             "SELECT created_at FROM Log WHERE habit_id = ?1 AND (created_at BETWEEN ?2 AND ?3)",
         )
-        .wrap_err("Failed to prepare statement in `get_logs_for_habit`.")?;
+        .wrap_err("Failed to prepare select statement.")?;
 
     let rows = stmt
         .query_map(
             rusqlite::params![
                 habit_id,
-                first_second_of_year.timestamp_nanos_opt().unwrap(),
-                last_second_of_year.timestamp_nanos_opt().unwrap()
+                dt1.timestamp_nanos_opt().unwrap(),
+                dt2.timestamp_nanos_opt().unwrap()
             ],
             |row| {
                 let timestamp = row.get::<_, i64>(0)?;
@@ -673,6 +699,21 @@ pub fn habit_get_logs_for_year(
     }
 
     Ok(datetimes)
+}
+
+pub fn habit_get_logs_for_year(
+    conn: &Connection,
+    habit_name: &str,
+    year: i32,
+) -> eyre::Result<Vec<DateTime<Local>>> {
+    let first_second_of_year = Local.with_ymd_and_hms(year, 1, 1, 0, 0, 0).unwrap();
+    let last_second_of_year = Local.with_ymd_and_hms(year, 12, 31, 23, 59, 59).unwrap();
+    habit_get_logs_between(
+        conn,
+        habit_name,
+        &first_second_of_year,
+        &last_second_of_year,
+    )
 }
 
 pub fn log_table_is_empty(conn: &Connection) -> eyre::Result<bool> {
