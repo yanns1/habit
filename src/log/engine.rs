@@ -11,7 +11,7 @@ use chrono::Days;
 use chrono::Local;
 use chrono::TimeZone;
 use chrono::Weekday;
-use colored::Colorize;
+use crossterm::style::Stylize;
 use eyre::eyre;
 
 pub fn get_engine(cli: LogCli) -> Box<dyn Engine> {

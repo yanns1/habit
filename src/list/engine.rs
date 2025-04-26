@@ -3,7 +3,7 @@ use crate::engine::Engine;
 use crate::list::cli::ListCli;
 use crate::macros::get_conn;
 use crate::utils;
-use colored::Colorize;
+use crossterm::style::Stylize;
 
 pub fn get_engine(cli: ListCli) -> Box<dyn Engine> {
     Box::new(ListEngine {
@@ -41,7 +41,7 @@ impl Engine for ListEngine {
                 for line in textwrap::wrap(
                     &format!(
                         "{} Each {} at {}.",
-                        ">".bright_black(),
+                        ">".dark_grey(),
                         utils::display_days(&habit.days),
                         habit.at
                     ),
