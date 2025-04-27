@@ -108,6 +108,51 @@ impl Engine for LogEngine {
                         habit.name
                     );
                 }
+                PastDate::Date(dt) => {
+                    // Check if `dt` is a habit day.
+                    if !habit.days.contains(&dt.weekday().into()) {
+                        eprintln!(
+                            "{} is not a habit day of '{}' ({}), so you cannot log a rep.",
+                            dt.format("%Y-%m-%d"),
+                            habit.name,
+                            utils::display_days(&habit.days)
+                        );
+                        return Ok(());
+                    }
+
+                    // Check if `dt` has already been logged.
+                    let first_second_of_dt = Local
+                        .with_ymd_and_hms(dt.year(), dt.month(), dt.day(), 0, 0, 0)
+                        .unwrap();
+                    let last_second_of_dt = Local
+                        .with_ymd_and_hms(dt.year(), dt.month(), dt.day(), 23, 59, 59)
+                        .unwrap();
+                    let last_habit_day_logs = db::habit_get_logs_between(
+                        &conn,
+                        &habit.name,
+                        &first_second_of_dt,
+                        &last_second_of_dt,
+                    )?;
+                    debug_assert!(last_habit_day_logs.len() <= 1);
+                    if !last_habit_day_logs.is_empty() {
+                        eprintln!(
+                            "Habit '{}' has already been logged for past habit day ({}). Nothing done.",
+                            habit.name, <Weekday as Into<Day>>::into(dt.weekday())
+                        );
+                        return Ok(());
+                    }
+
+                    // Log the rep.
+                    db::log_insert(&conn, &habit.name, Some(dt.clone()))?;
+                    println!("Rep successfully logged for past habit day ({}).", dt);
+
+                    let n_reps = db::habit_get_n_logs(&conn, &habit.name)?;
+                    println!(
+                        "Good job! You are at {} for habit '{}'.",
+                        format!("{} {}", n_reps, if n_reps <= 1 { "rep" } else { "reps" }).bold(),
+                        habit.name
+                    );
+                }
             },
             None => {
                 // Check if today is a habit day.

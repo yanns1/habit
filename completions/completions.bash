@@ -44,6 +44,9 @@ _habit_completions() {
             local habits=$(habit list)
             COMPREPLY=( $(compgen -W "${habits[@]}" -- "$cur") )
         fi
+        if [[ $COMP_CWORD == 3 ]]; then
+            COMPREPLY=( $(compgen -W 'last' -- "$cur") )
+        fi
         return 0
         ;;
 
