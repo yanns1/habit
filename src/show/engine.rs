@@ -1,6 +1,7 @@
 use crate::db;
 use crate::engine::Engine;
 use crate::habit::Habit;
+use crate::macros::dbg_to_file;
 use crate::macros::get_conn;
 use crate::show::calendar::Calendar;
 use crate::show::cli::ShowCli;
@@ -37,6 +38,7 @@ use ratatui::widgets::Widget;
 use ratatui::widgets::Wrap;
 use std::collections::hash_map;
 use std::collections::HashMap;
+use std::time::Instant;
 
 const PRIMARY_COLOR: Color = Color::LightBlue;
 const POINTED_LIST_ITEM_STYLE: Style = Style::new().add_modifier(Modifier::BOLD);
@@ -209,17 +211,47 @@ impl App {
     /// runs the application's main loop until the user quits
     fn run(&mut self, terminal: &mut tui::Tui) -> eyre::Result<()> {
         while !self.exit {
+            let now = Instant::now();
+
             terminal.draw(|frame| frame.render_widget(&mut *self, frame.area()))?;
-            self.handle_events()?;
+
+            let elapsed = now.elapsed();
+            let ms_elapsed = now.elapsed().as_millis();
+
+            #[cfg(debug_assertions)]
+            {
+                let elapsed_str = format!(
+                    "Elapsed (before handling of events): {:.2?}/f {:.2}f/s",
+                    elapsed,
+                    (1000_f32) / (ms_elapsed as f32)
+                );
+                dbg_to_file!(elapsed_str);
+            }
+
+            // Aim at approximately 30 frames per second.
+            let ms_timeout = (30_u64).saturating_sub(ms_elapsed as u64);
+            self.handle_events(ms_timeout)?;
+
+            #[cfg(debug_assertions)]
+            {
+                let elapsed2 = now.elapsed();
+                let ms_elapsed2 = now.elapsed().as_millis();
+                let elapsed_str2 = format!(
+                    "Elapsed (after handling of events): {:.2?}/f {:.2}f/s",
+                    elapsed2,
+                    (1000_f32) / (ms_elapsed2 as f32)
+                );
+                dbg_to_file!(elapsed_str2);
+            }
         }
         Ok(())
     }
 
-    fn handle_events(&mut self) -> eyre::Result<()> {
+    fn handle_events(&mut self, ms_timeout: u64) -> eyre::Result<()> {
         // Add a small timeout to the event polling to ensure that the UI
         // remains responsive regardless of whether there are events pending
         // (16ms is ~60fps).
-        if !event::poll(std::time::Duration::from_millis(16))? {
+        if !event::poll(std::time::Duration::from_millis(ms_timeout))? {
             return Ok(());
         }
 
