@@ -837,7 +837,7 @@ mod debug {
     /// - Check that the at prompt errors when the format of the input is not "hh:mm",
     ///   or when the input hour/minutes is out of bounds ([[0, 23]] and [[0, 59]]).
     /// - Check if the proper data was written to the database by running:
-    ///     `SELECT * FROM Habit;`
+    ///   `SELECT * FROM Habit;`
     ///
     fn fill_db_new(conn: &Connection) -> eyre::Result<()> {
         let h1 = Habit::new(
@@ -922,32 +922,32 @@ mod debug {
     /// # Manual tests
     ///
     /// - Run `DB=edit cargo r -- edit whatever name`.
-    ///     It should fail because habit "whatever" does not exist.
+    ///   It should fail because habit "whatever" does not exist.
     /// - Run `DB=edit cargo r -- edit h1 name`.
-    ///     It should work for any name other than those already existing.
-    ///     Check that the new name was written to the DB using:
-    ///     `SELECT * FROM Habit;`
-    ///     Check that there is a new entry in table `HabitHistory`:
-    ///     `SELECT * FROM HabitHistory;`
+    ///   It should work for any name other than those already existing.
+    ///   Check that the new name was written to the DB using:
+    ///   `SELECT * FROM Habit;`
+    ///   Check that there is a new entry in table `HabitHistory`:
+    ///   `SELECT * FROM HabitHistory;`
     /// - Run `DB=edit cargo r -- edit h1 description`.
-    ///     It should work for any description.
-    ///     Check that the new description was written to the DB using:
-    ///     `SELECT * FROM Habit;`
-    ///     Check that there is a new entry in table `HabitHistory`:
-    ///     `SELECT * FROM HabitHistory;`
+    ///   It should work for any description.
+    ///   Check that the new description was written to the DB using:
+    ///   `SELECT * FROM Habit;`
+    ///   Check that there is a new entry in table `HabitHistory`:
+    ///   `SELECT * FROM HabitHistory;`
     /// - Run `DB=edit cargo r -- edit h1 days`.
-    ///     It should work for any combination of days.
-    ///     Check that the new days were written to the DB using:
-    ///     `SELECT * FROM Habit;`
-    ///     Check that there is a new entry in table `HabitHistory`:
-    ///     `SELECT * FROM HabitHistory;`
+    ///   It should work for any combination of days.
+    ///   Check that the new days were written to the DB using:
+    ///   `SELECT * FROM Habit;`
+    ///   Check that there is a new entry in table `HabitHistory`:
+    ///   `SELECT * FROM HabitHistory;`
     /// - Run `DB=edit cargo r -- edit h1 at`.
-    ///     The prompt should error if the format is wrong, or the hour/minutes
-    ///     is out of bounds.
-    ///     Check that the new at was written to the DB using:
-    ///     `SELECT * FROM Habit;`
-    ///     Check that there is a new entry in table `HabitHistory`:
-    ///     `SELECT * FROM HabitHistory;`
+    ///   The prompt should error if the format is wrong, or the hour/minutes
+    ///   is out of bounds.
+    ///   Check that the new at was written to the DB using:
+    ///   `SELECT * FROM Habit;`
+    ///   Check that there is a new entry in table `HabitHistory`:
+    ///   `SELECT * FROM HabitHistory;`
     ///
     fn fill_db_edit(conn: &Connection) -> eyre::Result<()> {
         let h1 = Habit::new(
@@ -972,17 +972,17 @@ mod debug {
     /// # Manual tests
     ///
     /// - Run `DB=delete cargo r -- delete whatever`.
-    ///     It should fail because habit "whatever" does not exist.
+    ///   It should fail because habit "whatever" does not exist.
     /// - Run `DB=delete cargo r -- delete h1`.
-    ///     It should ask for confirmation, and do nothing if "n" is pressed.
+    ///   It should ask for confirmation, and do nothing if "n" is pressed.
     /// - Run `DB=delete cargo r -- delete h1`.
-    ///     It should ask for confirmation, and succeed if "y" is pressed.
-    ///     Check that the entry for `h1` no longer is in table `Habit`:
-    ///     `SELECT * FROM Habit;`
-    ///     Deletion should cascade on `Log` and `HabitHistory`.
-    ///     Make sure this is the case:
-    ///     `SELECT * FROM Log WHERE habit_id = 0;`
-    ///     `SELECT * FROM HabitHistory; WHERE habit_id = 0;`
+    ///   It should ask for confirmation, and succeed if "y" is pressed.
+    ///   Check that the entry for `h1` no longer is in table `Habit`:
+    ///   `SELECT * FROM Habit;`
+    ///   Deletion should cascade on `Log` and `HabitHistory`.
+    ///   Make sure this is the case:
+    ///   `SELECT * FROM Log WHERE habit_id = 0;`
+    ///   `SELECT * FROM HabitHistory; WHERE habit_id = 0;`
     fn fill_db_delete(conn: &Connection) -> eyre::Result<()> {
         let h1 = Habit::new(
             "h1".to_string(),
@@ -1054,19 +1054,18 @@ mod debug {
     ///
     /// # Manual tests
     ///
-    /// - Run ``.
     /// - Run `DB=list cargo r -- list`, output should be:
     ///
-    ///     ```text
-    ///     h1
-    ///     h2
-    ///     h3
-    ///     h4
-    ///     h5
-    ///     ```
+    ///   ```text
+    ///   h1
+    ///   h2
+    ///   h3
+    ///   h4
+    ///   h5
+    ///   ```
     ///
     /// - Run `habit list -v`, check that the output corresponds
-    ///     to the inserted data.
+    ///   to the inserted data.
     fn fill_db_list(conn: &Connection) -> eyre::Result<()> {
         let h1 = Habit::new(
             "h1".to_string(),
@@ -1150,19 +1149,19 @@ mod debug {
     /// # Manual tests
     ///
     /// - Run `DB=log cargo r -- log whatever`.
-    ///     It should fail because habit "whatever" does not exist.
+    ///   It should fail because habit "whatever" does not exist.
     /// - Run `DB=log cargo r -- log h1`.
-    ///     It should succeed.
-    ///     Check that the log has been added to the database:
-    ///     `SELECT * FROM Log;`
-    ///     This should be the only log of h1.
+    ///   It should succeed.
+    ///   Check that the log has been added to the database:
+    ///   `SELECT * FROM Log;`
+    ///   This should be the only log of h1.
     /// - Run `DB=log cargo r -- log h2`.
-    ///     It should succeed.
-    ///     Check that the log has been added to the database:
-    ///     `SELECT * FROM Log;`
-    ///     This is not the only log of h2.
+    ///   It should succeed.
+    ///   Check that the log has been added to the database:
+    ///   `SELECT * FROM Log;`
+    ///   This is not the only log of h2.
     /// - Run `DB=log cargo r -- log h3`.
-    ///     It should succeed, but do nothing and warn that h3 is suspended.
+    ///   It should succeed, but do nothing and warn that h3 is suspended.
     fn fill_db_log(conn: &Connection) -> eyre::Result<()> {
         let h1 = Habit::new(
             "h1".to_string(),
@@ -1217,10 +1216,10 @@ mod debug {
     /// # Manual tests
     ///
     /// - Run `habit suspend h1`.
-    ///     It should succeed.
-    ///     Check in the database that the `suspended` column is set to 1 for `h1`.
+    ///   It should succeed.
+    ///   Check in the database that the `suspended` column is set to 1 for `h1`.
     /// - Run `habit suspend whatever`.
-    ///     It should fail because habit "whatever" does not exist.
+    ///   It should fail because habit "whatever" does not exist.
     fn fill_db_suspend(conn: &Connection) -> eyre::Result<()> {
         let h1 = Habit::new(
             "h1".to_string(),
@@ -1244,13 +1243,13 @@ mod debug {
     /// # Manual tests
     ///
     /// - Run `DB=resume cargo r -- resume h1`.
-    ///     It should succeed.
-    ///     Check in the database that the `suspended` column is set to 0 for `h1`.
+    ///   It should succeed.
+    ///   Check in the database that the `suspended` column is set to 0 for `h1`.
     /// - Run `DB=resume cargo r -- resume h2`.
-    ///     It should succeed, but do nothing, and provide a warning saying
-    ///     that h2 is already resumed.
+    ///   It should succeed, but do nothing, and provide a warning saying
+    ///   that h2 is already resumed.
     /// - Run `DB=resume cargo r -- resume whatever`.
-    ///     It should fail because habit "whatever" does not exist.
+    ///   It should fail because habit "whatever" does not exist.
     fn fill_db_resume(conn: &Connection) -> eyre::Result<()> {
         let h1 = Habit::new(
             "h1".to_string(),

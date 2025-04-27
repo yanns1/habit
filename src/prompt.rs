@@ -140,7 +140,7 @@ pub fn prompt_habit_days() -> eyre::Result<Vec<Day>> {
     for (idx, day_string) in day_strings.into_iter().enumerate() {
         eprint!("{}{}", if idx == 0 { "" } else { ", " }, day_string.green());
     }
-    eprint!("\n");
+    eprintln!();
 
     Ok(days)
 }

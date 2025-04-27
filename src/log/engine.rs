@@ -143,7 +143,7 @@ impl Engine for LogEngine {
                     }
 
                     // Log the rep.
-                    db::log_insert(&conn, &habit.name, Some(dt.clone()))?;
+                    db::log_insert(&conn, &habit.name, Some(*dt))?;
                     println!("Rep successfully logged for past habit day ({}).", dt);
 
                     let n_reps = db::habit_get_n_logs(&conn, &habit.name)?;
