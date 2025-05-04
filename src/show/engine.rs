@@ -486,7 +486,6 @@ impl Widget for &mut App {
 
         let habit_details_para = Paragraph::new(habit_details)
             .block(Block::bordered().title("Habit details"))
-            .style(Style::new().white().on_black())
             .wrap(Wrap { trim: true });
 
         // Habit list
